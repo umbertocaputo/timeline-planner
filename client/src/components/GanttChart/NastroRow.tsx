@@ -133,14 +133,15 @@ export function NastroRow({ nastroId, attivitaList }: NastroRowProps) {
           const position = getPercentageOfDay(next.orarioInizio);
           
           return (
-            <div
+            <svg
               key={`mismatch-${att.id}-${next.id}`}
-              className="absolute top-0 bottom-0 w-0.5 transform -translate-x-1/2 flex items-center justify-center group/mismatch"
-              style={{ left: `${position}%` }}
+              className="absolute top-1 transition-opacity opacity-70 hover:opacity-100"
+              style={{ left: `${position}%`, width: '12px', height: '56px', marginLeft: '-6px' }}
+              viewBox="0 0 12 56"
               title={`Mismatch: ${att.idDestinazione} → ${next.idOrigine}`}
             >
-              <div className="w-0 h-0 border-l-2 border-r-2 border-t-3 border-l-transparent border-r-transparent border-t-destructive transition-all opacity-70 group-hover/mismatch:opacity-100" />
-            </div>
+              <polygon points="6,2 12,12 0,12" fill="#dc2626" />
+            </svg>
           );
         })}
       </div>

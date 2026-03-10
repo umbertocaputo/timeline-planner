@@ -61,9 +61,9 @@ export function AttivitaItem({ attivita }: AttivitaItemProps) {
             {...listeners}
             data-testid={`activity-item-${attivita.id}`}
           >
-            <div className="px-2 py-0.5 w-full truncate text-[10px] font-medium text-white drop-shadow-md">
-              {attivita.tipoAttivita}
-              {attivita.idCorsa && ` (${attivita.idCorsa})`}
+            <div className="px-2 py-0.5 w-full truncate text-[10px] font-medium text-white drop-shadow-md flex items-center justify-between gap-1">
+              <span className="truncate">{attivita.tipoAttivita}</span>
+              {attivita.idCorsa && <span className="truncate font-bold shrink-0">{attivita.idCorsa}</span>}
             </div>
             <div className="px-2 pb-0.5 w-full truncate text-[9px] text-white/90 drop-shadow-md font-mono flex justify-between">
               <span>{formatTime(attivita.orarioInizio)}</span>

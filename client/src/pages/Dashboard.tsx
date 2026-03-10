@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function Dashboard() {
   const [sortBy, setSortBy] = useState<"name" | "start-time">("name");
   const [hideSosta, setHideSosta] = useState(false);
+  const [hideTempoAccessorio, setHideTempoAccessorio] = useState(false);
   const { data: attivitaList, isLoading } = useAttivita();
   const { mutate: clearAll, isPending: isClearing } = useClearAllAttivita();
 
@@ -63,6 +64,15 @@ export default function Dashboard() {
                 {hideSosta ? "Mostra" : "Nascondi"} sosta
               </Button>
               <Button
+                variant={hideTempoAccessorio ? "default" : "outline"}
+                size="sm"
+                onClick={() => setHideTempoAccessorio(!hideTempoAccessorio)}
+                data-testid="button-toggle-tempo-accessorio"
+                className="px-3"
+              >
+                {hideTempoAccessorio ? "Mostra" : "Nascondi"} tempo accessorio
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
@@ -93,7 +103,7 @@ export default function Dashboard() {
             <Skeleton className="w-full h-16 rounded-lg" />
           </div>
         ) : (
-          <GanttBoard attivitaList={attivitaList || []} sortBy={sortBy} hideSosta={hideSosta} />
+          <GanttBoard attivitaList={attivitaList || []} sortBy={sortBy} hideSosta={hideSosta} hideTempoAccessorio={hideTempoAccessorio} />
         )}
       </main>
     </div>

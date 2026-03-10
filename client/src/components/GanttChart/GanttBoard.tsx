@@ -17,9 +17,10 @@ interface GanttBoardProps {
   attivitaList: Attivita[];
   sortBy?: "name" | "start-time";
   hideSosta?: boolean;
+  hideTempoAccessorio?: boolean;
 }
 
-export function GanttBoard({ attivitaList, sortBy = "name", hideSosta = false }: GanttBoardProps) {
+export function GanttBoard({ attivitaList, sortBy = "name", hideSosta = false, hideTempoAccessorio = false }: GanttBoardProps) {
   const { mutate: updateAttivita } = useUpdateAttivita();
   const { mutate: moveNastro } = useMoveNastro();
 
@@ -29,6 +30,10 @@ export function GanttBoard({ attivitaList, sortBy = "name", hideSosta = false }:
     attivitaList.forEach(att => {
       // Skip sosta activities if hideSosta is true (case-insensitive)
       if (hideSosta && att.tipoAttivita.toLowerCase() === "sosta") {
+        return;
+      }
+      // Skip tempo accessorio activities if hideTempoAccessorio is true (case-insensitive)
+      if (hideTempoAccessorio && att.tipoAttivita.toLowerCase() === "tempo accessorio") {
         return;
       }
       const existing = groups.get(att.nastroId) || [];
@@ -61,7 +66,7 @@ export function GanttBoard({ attivitaList, sortBy = "name", hideSosta = false }:
     
     // Remove empty nastri
     return entries.filter(([_, items]) => items.length > 0);
-  }, [attivitaList, sortBy, hideSosta]);
+  }, [attivitaList, sortBy, hideSosta, hideTempoAccessorio]);
 
   // Configure sensors to only drag after moving a bit (prevents firing drag on clicks)
   const sensors = useSensors(
