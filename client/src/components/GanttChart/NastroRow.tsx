@@ -140,12 +140,12 @@ export function NastroRow({
         if (gapMins < pausaMinimaMinutes) return;
       }
 
-      // Calculate total merged duration
-      const candidateDurationMins =
+      // Total merged duration = from start of current nastro to end of candidate nastro
+      // This is the actual span of the merged nastro (includes the gap between them)
+      const totalDurationMins =
         (new Date(candidateLast.orarioFine).getTime() -
-          new Date(candidateFirst.orarioInizio).getTime()) /
+          new Date(first.orarioInizio).getTime()) /
         60000;
-      const totalDurationMins = currentDurationMins + candidateDurationMins;
 
       // Check total duration constraint
       if (durataMassimaMinutes !== null && totalDurationMins > durataMassimaMinutes)
@@ -183,14 +183,30 @@ export function NastroRow({
     <div
       ref={setDroppableRef}
       className={`
-        flex h-16 border-b-2 transition-colors duration-200
-        ${hasLocationMismatch ? "border-b-destructive bg-destructive/5" : "border-b-border/50 bg-card"}
+        flex h-16 border-b transition-colors duration-200 relative
+        ${hasLocationMismatch
+          ? "border-b-red-300 dark:border-b-red-800 bg-red-50/60 dark:bg-red-950/25"
+          : "border-b-border/50 bg-card"
+        }
         ${isOver ? "bg-primary/5 ring-inset ring-2 ring-primary/20" : "hover:bg-muted/10"}
         ${isDragging ? "opacity-50" : ""}
       `}
     >
+      {/* Mismatch accent bar — vivid left stripe on the timeline side */}
+      {hasLocationMismatch && (
+        <div
+          className="absolute left-52 top-0 bottom-0 w-1 bg-red-500 dark:bg-red-400 z-20 pointer-events-none"
+          title="Inizio e fine nastro in località diverse"
+        />
+      )}
+
       {/* Row Label */}
-      <div className="w-52 shrink-0 border-r border-border flex items-center px-2 gap-1 relative bg-card z-10 group">
+      <div className={`w-52 shrink-0 border-r flex items-center px-2 gap-1 relative z-10 group transition-colors duration-200
+        ${hasLocationMismatch
+          ? "border-r-red-300 dark:border-r-red-700 bg-red-50 dark:bg-red-950/40"
+          : "border-r-border bg-card"
+        }
+      `}>
         <div
           ref={setDraggableRef}
           {...attributes}
