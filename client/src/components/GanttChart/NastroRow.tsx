@@ -2,6 +2,7 @@ import { useDroppable, useDraggable } from "@dnd-kit/core";
 import { type Attivita } from "@shared/schema";
 import { AttivitaItem } from "./AttivitaItem";
 import { stringToColor } from "@/lib/color-utils";
+import { getPercentageOfDay } from "./TimeUtils";
 import { GripVertical } from "lucide-react";
 
 interface NastroRowProps {
@@ -20,20 +21,20 @@ export function NastroRow({ nastroId, attivitaList }: NastroRowProps) {
 
   // Calculate total duration: difference between end of last activity and start of first
   const calculateDuration = () => {
-    if (!first || !last) return "0m";
+    if (!first || !last) return "00:00";
     const startTime = new Date(first.orarioInizio).getTime();
     const endTime = new Date(last.orarioFine).getTime();
     const diffMs = endTime - startTime;
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const hours = Math.floor(diffMins / 60);
     const mins = diffMins % 60;
-    if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    }
-    return `${mins}m`;
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
   };
 
   const duration = calculateDuration();
+
+  // Check if nastro starts and ends at different locations
+  const hasLocationMismatch = first && last && first.idOrigine !== last.idDestinazione;
 
   // Droppable area for activities and other nastri
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
@@ -62,7 +63,8 @@ export function NastroRow({ nastroId, attivitaList }: NastroRowProps) {
     <div 
       ref={setDroppableRef}
       className={`
-        flex h-16 border-b border-border/50 bg-card transition-colors duration-200
+        flex h-16 border-b-2 transition-colors duration-200
+        ${hasLocationMismatch ? 'border-b-destructive bg-destructive/5' : 'border-b-border/50 bg-card'}
         ${isOver ? 'bg-primary/5 ring-inset ring-2 ring-primary/20' : 'hover:bg-muted/10'}
         ${isDragging ? 'opacity-50' : ''}
       `}
@@ -118,6 +120,28 @@ export function NastroRow({ nastroId, attivitaList }: NastroRowProps) {
         {attivitaList.map((att) => (
           <AttivitaItem key={att.id} attivita={att} />
         ))}
+        
+        {/* Mismatch indicators (red triangles) */}
+        {sorted.map((att, idx) => {
+          if (idx >= sorted.length - 1) return null;
+          const next = sorted[idx + 1];
+          const hasMismatch = att.idDestinazione !== next.idOrigine;
+          
+          if (!hasMismatch) return null;
+          
+          const position = getPercentageOfDay(next.orarioInizio);
+          
+          return (
+            <div
+              key={`mismatch-${att.id}-${next.id}`}
+              className="absolute top-0 bottom-0 w-0.5 transform -translate-x-1/2 flex items-center justify-center group/mismatch"
+              style={{ left: `${position}%` }}
+              title={`Mismatch: ${att.idDestinazione} → ${next.idOrigine}`}
+            >
+              <div className="w-0 h-0 border-l-2 border-r-2 border-t-3 border-l-transparent border-r-transparent border-t-destructive transition-all opacity-70 group-hover/mismatch:opacity-100" />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

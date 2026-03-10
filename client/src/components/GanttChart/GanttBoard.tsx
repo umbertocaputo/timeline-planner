@@ -27,8 +27,8 @@ export function GanttBoard({ attivitaList, sortBy = "name", hideSosta = false }:
   const nastri = useMemo(() => {
     const groups = new Map<string, Attivita[]>();
     attivitaList.forEach(att => {
-      // Skip sosta activities if hideSosta is true
-      if (hideSosta && att.tipoAttivita === "Sosta") {
+      // Skip sosta activities if hideSosta is true (case-insensitive)
+      if (hideSosta && att.tipoAttivita.toLowerCase() === "sosta") {
         return;
       }
       const existing = groups.get(att.nastroId) || [];

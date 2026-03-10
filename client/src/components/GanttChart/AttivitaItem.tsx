@@ -32,11 +32,13 @@ export function AttivitaItem({ attivita }: AttivitaItemProps) {
   const colorOrig = stringToColor(attivita.idOrigine);
   const colorDest = stringToColor(attivita.idDestinazione);
 
+  const isTempoAccessorio = attivita.tipoAttivita.toLowerCase() === "tempo accessorio";
+
   const style = {
     left: `${left}%`,
     width: `${width}%`,
-    // Gradient between origin and destination color
-    background: `linear-gradient(to right, ${colorOrig}, ${colorDest})`,
+    // Gradient between origin and destination color (50% each)
+    background: `linear-gradient(to right, ${colorOrig} 0%, ${colorOrig} 50%, ${colorDest} 50%, ${colorDest} 100%)`,
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     zIndex: isDragging ? 50 : 1,
   };
@@ -52,6 +54,7 @@ export function AttivitaItem({ attivita }: AttivitaItemProps) {
               absolute top-1 bottom-1 rounded-md shadow-sm group
               flex flex-col justify-center overflow-hidden
               transition-shadow duration-200 cursor-grab active:cursor-grabbing
+              ${isTempoAccessorio ? 'border-2 border-black dark:border-white' : ''}
               ${isDragging ? 'shadow-xl ring-2 ring-primary/50 opacity-90' : 'hover:shadow-md hover:ring-1 hover:ring-border'}
             `}
             {...attributes}
