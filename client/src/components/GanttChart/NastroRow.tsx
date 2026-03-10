@@ -117,7 +117,8 @@ export function NastroRow({ nastroId, attivitaList }: NastroRowProps) {
 
       {/* Grid Area */}
       <div className="flex-1 relative gantt-pattern">
-        {attivitaList.map((att) => (
+        {/* Render activities in sorted order */}
+        {sorted.map((att) => (
           <AttivitaItem key={att.id} attivita={att} />
         ))}
         
