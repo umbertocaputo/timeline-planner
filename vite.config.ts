@@ -6,10 +6,10 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 export default defineConfig({
   plugins: [
     react(),
-    runtimeErrorOverlay(),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
+          runtimeErrorOverlay({ enabled: false }),
           await import("@replit/vite-plugin-cartographer").then((m) =>
             m.cartographer(),
           ),
@@ -17,7 +17,7 @@ export default defineConfig({
             m.devBanner(),
           ),
         ]
-      : []),
+      : [runtimeErrorOverlay()]),
   ],
   resolve: {
     alias: {

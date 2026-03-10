@@ -4,6 +4,12 @@ import { getPercentageOfDay, getDurationPercentage, formatTime } from "./TimeUti
 import { stringToColor } from "@/lib/color-utils";
 import { X } from "lucide-react";
 import { useDeleteAttivita } from "@/hooks/use-attivita";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface AttivitaItemProps {
   attivita: Attivita;
@@ -36,37 +42,61 @@ export function AttivitaItem({ attivita }: AttivitaItemProps) {
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`
-        absolute top-1 bottom-1 rounded-md shadow-sm group
-        flex flex-col justify-center overflow-hidden
-        transition-shadow duration-200 cursor-grab active:cursor-grabbing
-        ${isDragging ? 'shadow-xl ring-2 ring-primary/50 opacity-90' : 'hover:shadow-md hover:ring-1 hover:ring-border'}
-      `}
-      {...attributes}
-      {...listeners}
-    >
-      <div className="px-2 py-0.5 w-full truncate text-[10px] font-medium text-white drop-shadow-md">
-        {attivita.tipoAttivita}
-        {attivita.idCorsa && ` (${attivita.idCorsa})`}
-      </div>
-      <div className="px-2 pb-0.5 w-full truncate text-[9px] text-white/90 drop-shadow-md font-mono flex justify-between">
-        <span>{formatTime(attivita.orarioInizio)}</span>
-        <span>{formatTime(attivita.orarioFine)}</span>
-      </div>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            ref={setNodeRef}
+            style={style}
+            className={`
+              absolute top-1 bottom-1 rounded-md shadow-sm group
+              flex flex-col justify-center overflow-hidden
+              transition-shadow duration-200 cursor-grab active:cursor-grabbing
+              ${isDragging ? 'shadow-xl ring-2 ring-primary/50 opacity-90' : 'hover:shadow-md hover:ring-1 hover:ring-border'}
+            `}
+            {...attributes}
+            {...listeners}
+            data-testid={`activity-item-${attivita.id}`}
+          >
+            <div className="px-2 py-0.5 w-full truncate text-[10px] font-medium text-white drop-shadow-md">
+              {attivita.tipoAttivita}
+              {attivita.idCorsa && ` (${attivita.idCorsa})`}
+            </div>
+            <div className="px-2 pb-0.5 w-full truncate text-[9px] text-white/90 drop-shadow-md font-mono flex justify-between">
+              <span>{formatTime(attivita.orarioInizio)}</span>
+              <span>{formatTime(attivita.orarioFine)}</span>
+            </div>
 
-      {/* Delete button appears on hover */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          deleteAttivita(attivita.id);
-        }}
-        className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 z-20 cursor-pointer"
-      >
-        <X className="w-3 h-3" />
-      </button>
-    </div>
+            {/* Delete button appears on hover */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteAttivita(attivita.id);
+              }}
+              className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 z-20 cursor-pointer"
+              data-testid={`button-delete-activity-${attivita.id}`}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="bg-foreground text-background">
+          <div className="text-sm font-medium">
+            {attivita.tipoAttivita}
+            {attivita.idCorsa && (
+              <div className="text-xs mt-1 text-muted">
+                Corsa: <span className="font-semibold text-foreground">{attivita.idCorsa}</span>
+              </div>
+            )}
+          </div>
+          <div className="text-xs mt-1">
+            {formatTime(attivita.orarioInizio)} → {formatTime(attivita.orarioFine)}
+          </div>
+          <div className="text-xs mt-1">
+            {attivita.idOrigine} → {attivita.idDestinazione}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

@@ -1,11 +1,20 @@
+import { useState } from "react";
 import { CalendarDays, Trash2 } from "lucide-react";
 import { ExcelUploader } from "@/components/ExcelUploader";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
 import { useAttivita, useClearAllAttivita } from "@/hooks/use-attivita";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function Dashboard() {
+  const [sortBy, setSortBy] = useState<"name" | "start-time">("name");
   const { data: attivitaList, isLoading } = useAttivita();
   const { mutate: clearAll, isPending: isClearing } = useClearAllAttivita();
 
@@ -27,22 +36,34 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
           {attivitaList && attivitaList.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (confirm("Sei sicuro di voler eliminare tutti i dati? Questa azione è irreversibile.")) {
-                  clearAll();
-                }
-              }}
-              disabled={isClearing}
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive hover-elevate border-destructive/20"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Svuota
-            </Button>
+            <>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as "name" | "start-time")}>
+                <SelectTrigger className="w-[180px]" data-testid="select-sort-nastri">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Ordina per nome</SelectItem>
+                  <SelectItem value="start-time">Ordina per inizio</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (confirm("Sei sicuro di voler eliminare tutti i dati? Questa azione è irreversibile.")) {
+                    clearAll();
+                  }
+                }}
+                disabled={isClearing}
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive hover-elevate border-destructive/20"
+                data-testid="button-clear-all"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Svuota
+              </Button>
+            </>
           )}
           <ExcelUploader />
         </div>
@@ -58,7 +79,7 @@ export default function Dashboard() {
             <Skeleton className="w-full h-16 rounded-lg" />
           </div>
         ) : (
-          <GanttBoard attivitaList={attivitaList || []} />
+          <GanttBoard attivitaList={attivitaList || []} sortBy={sortBy} />
         )}
       </main>
     </div>

@@ -15,9 +15,10 @@ import { useUpdateAttivita, useMoveNastro } from "@/hooks/use-attivita";
 
 interface GanttBoardProps {
   attivitaList: Attivita[];
+  sortBy?: "name" | "start-time";
 }
 
-export function GanttBoard({ attivitaList }: GanttBoardProps) {
+export function GanttBoard({ attivitaList, sortBy = "name" }: GanttBoardProps) {
   const { mutate: updateAttivita } = useUpdateAttivita();
   const { mutate: moveNastro } = useMoveNastro();
 
@@ -30,9 +31,31 @@ export function GanttBoard({ attivitaList }: GanttBoardProps) {
       groups.set(att.nastroId, existing);
     });
     
-    // Sort rows alphabetically by Nastro ID
-    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [attivitaList]);
+    // Sort rows by selected criteria
+    const entries = Array.from(groups.entries());
+    
+    if (sortBy === "start-time") {
+      entries.sort((a, b) => {
+        const aStart = a[1].length > 0 
+          ? new Date(a[1][0].orarioInizio).getTime()
+          : Infinity;
+        const bStart = b[1].length > 0 
+          ? new Date(b[1][0].orarioInizio).getTime()
+          : Infinity;
+        
+        // Find earliest activity in each nastro
+        const aMin = Math.min(...a[1].map(att => new Date(att.orarioInizio).getTime()));
+        const bMin = Math.min(...b[1].map(att => new Date(att.orarioInizio).getTime()));
+        
+        return aMin - bMin;
+      });
+    } else {
+      // Sort alphabetically by Nastro ID
+      entries.sort((a, b) => a[0].localeCompare(b[0]));
+    }
+    
+    return entries;
+  }, [attivitaList, sortBy]);
 
   // Configure sensors to only drag after moving a bit (prevents firing drag on clicks)
   const sensors = useSensors(
