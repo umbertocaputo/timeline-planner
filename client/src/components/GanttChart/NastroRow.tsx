@@ -122,7 +122,7 @@ export function NastroRow({ nastroId, attivitaList }: NastroRowProps) {
           <AttivitaItem key={att.id} attivita={att} />
         ))}
         
-        {/* Mismatch indicators (red triangles) */}
+        {/* Mismatch indicators (red triangles) - positioned below row */}
         {sorted.map((att, idx) => {
           if (idx >= sorted.length - 1) return null;
           const next = sorted[idx + 1];
@@ -135,12 +135,12 @@ export function NastroRow({ nastroId, attivitaList }: NastroRowProps) {
           return (
             <svg
               key={`mismatch-${att.id}-${next.id}`}
-              className="absolute top-1 transition-opacity opacity-70 hover:opacity-100"
-              style={{ left: `${position}%`, width: '12px', height: '56px', marginLeft: '-6px' }}
-              viewBox="0 0 12 56"
+              className="absolute transition-opacity opacity-70 hover:opacity-100 pointer-events-auto"
+              style={{ left: `${position}%`, top: '56px', width: '20px', height: '20px', marginLeft: '-10px' }}
+              viewBox="0 0 20 20"
               title={`Mismatch: ${att.idDestinazione} → ${next.idOrigine}`}
             >
-              <polygon points="6,2 12,12 0,12" fill="#dc2626" />
+              <polygon points="10,2 20,18 0,18" fill="#dc2626" />
             </svg>
           );
         })}
