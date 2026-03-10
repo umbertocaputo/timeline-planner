@@ -1,6 +1,6 @@
 /**
- * Generates a consistent HSL color based on a string hash.
- * Used to give localities a consistent color.
+ * Generates a consistent, vibrant HSL color based on a string hash.
+ * Used to give localities a consistent, highly visible color.
  */
 export function stringToColor(str: string): string {
   if (!str) return 'hsl(0, 0%, 50%)';
@@ -12,6 +12,6 @@ export function stringToColor(str: string): string {
   
   // Constrain hue to 0-360
   const h = Math.abs(hash % 360);
-  // Keep saturation high and lightness medium for vibrant, readable colors
-  return `hsl(${h}, 75%, 55%)`;
+  // High saturation (95%) and medium-light lightness (45%) for maximum vibrancy
+  return `hsl(${h}, 95%, 45%)`;
 }

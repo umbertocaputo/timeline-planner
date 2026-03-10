@@ -16,16 +16,21 @@ import { useUpdateAttivita, useMoveNastro } from "@/hooks/use-attivita";
 interface GanttBoardProps {
   attivitaList: Attivita[];
   sortBy?: "name" | "start-time";
+  hideSosta?: boolean;
 }
 
-export function GanttBoard({ attivitaList, sortBy = "name" }: GanttBoardProps) {
+export function GanttBoard({ attivitaList, sortBy = "name", hideSosta = false }: GanttBoardProps) {
   const { mutate: updateAttivita } = useUpdateAttivita();
   const { mutate: moveNastro } = useMoveNastro();
 
-  // Group activities by Nastro
+  // Group activities by Nastro (filtered if hideSosta is true)
   const nastri = useMemo(() => {
     const groups = new Map<string, Attivita[]>();
     attivitaList.forEach(att => {
+      // Skip sosta activities if hideSosta is true
+      if (hideSosta && att.tipoAttivita === "Sosta") {
+        return;
+      }
       const existing = groups.get(att.nastroId) || [];
       existing.push(att);
       groups.set(att.nastroId, existing);
@@ -54,8 +59,9 @@ export function GanttBoard({ attivitaList, sortBy = "name" }: GanttBoardProps) {
       entries.sort((a, b) => a[0].localeCompare(b[0]));
     }
     
-    return entries;
-  }, [attivitaList, sortBy]);
+    // Remove empty nastri
+    return entries.filter(([_, items]) => items.length > 0);
+  }, [attivitaList, sortBy, hideSosta]);
 
   // Configure sensors to only drag after moving a bit (prevents firing drag on clicks)
   const sensors = useSensors(

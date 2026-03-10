@@ -18,6 +18,23 @@ export function NastroRow({ nastroId, attivitaList }: NastroRowProps) {
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
 
+  // Calculate total duration: difference between end of last activity and start of first
+  const calculateDuration = () => {
+    if (!first || !last) return "0m";
+    const startTime = new Date(first.orarioInizio).getTime();
+    const endTime = new Date(last.orarioFine).getTime();
+    const diffMs = endTime - startTime;
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+  };
+
+  const duration = calculateDuration();
+
   // Droppable area for activities and other nastri
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id: `nastro-${nastroId}`,
@@ -64,9 +81,14 @@ export function NastroRow({ nastroId, attivitaList }: NastroRowProps) {
         </div>
 
         <div className="flex flex-col flex-1 min-w-0">
-          <span className="font-semibold text-sm truncate text-foreground" title={nastroId}>
-            {nastroId}
-          </span>
+          <div className="flex items-baseline gap-2">
+            <span className="font-semibold text-sm truncate text-foreground" title={nastroId}>
+              {nastroId}
+            </span>
+            <span className="text-xs text-muted-foreground font-mono shrink-0" title="Durata totale nastro">
+              {duration}
+            </span>
+          </div>
           <div className="flex items-center text-[10px] text-muted-foreground gap-1.5 mt-0.5">
             {first && (
               <div className="flex items-center gap-1 shrink-0">

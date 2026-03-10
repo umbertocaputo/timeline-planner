@@ -5,16 +5,10 @@ import { GanttBoard } from "@/components/GanttChart/GanttBoard";
 import { useAttivita, useClearAllAttivita } from "@/hooks/use-attivita";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 export default function Dashboard() {
   const [sortBy, setSortBy] = useState<"name" | "start-time">("name");
+  const [hideSosta, setHideSosta] = useState(false);
   const { data: attivitaList, isLoading } = useAttivita();
   const { mutate: clearAll, isPending: isClearing } = useClearAllAttivita();
 
@@ -36,18 +30,38 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
           {attivitaList && attivitaList.length > 0 && (
             <>
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as "name" | "start-time")}>
-                <SelectTrigger className="w-[180px]" data-testid="select-sort-nastri">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name">Ordina per nome</SelectItem>
-                  <SelectItem value="start-time">Ordina per inizio</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-1 border border-border rounded-md p-0.5">
+                <Button
+                  variant={sortBy === "name" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setSortBy("name")}
+                  className="px-3"
+                  data-testid="button-sort-name"
+                >
+                  Per nome
+                </Button>
+                <Button
+                  variant={sortBy === "start-time" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setSortBy("start-time")}
+                  className="px-3"
+                  data-testid="button-sort-start"
+                >
+                  Per inizio
+                </Button>
+              </div>
+              <Button
+                variant={hideSosta ? "default" : "outline"}
+                size="sm"
+                onClick={() => setHideSosta(!hideSosta)}
+                data-testid="button-toggle-sosta"
+                className="px-3"
+              >
+                {hideSosta ? "Mostra" : "Nascondi"} sosta
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -79,7 +93,7 @@ export default function Dashboard() {
             <Skeleton className="w-full h-16 rounded-lg" />
           </div>
         ) : (
-          <GanttBoard attivitaList={attivitaList || []} sortBy={sortBy} />
+          <GanttBoard attivitaList={attivitaList || []} sortBy={sortBy} hideSosta={hideSosta} />
         )}
       </main>
     </div>

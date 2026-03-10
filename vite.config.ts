@@ -9,7 +9,6 @@ export default defineConfig({
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
-          runtimeErrorOverlay({ enabled: false }),
           await import("@replit/vite-plugin-cartographer").then((m) =>
             m.cartographer(),
           ),
@@ -17,7 +16,7 @@ export default defineConfig({
             m.devBanner(),
           ),
         ]
-      : [runtimeErrorOverlay()]),
+      : []),
   ],
   resolve: {
     alias: {
