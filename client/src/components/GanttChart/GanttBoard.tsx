@@ -11,7 +11,7 @@ import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { type Attivita, type Transito } from "@shared/schema";
 import { TimelineHeader } from "./TimelineHeader";
 import { NastroRow } from "./NastroRow";
-import { useUpdateAttivita, useMoveNastro } from "@/hooks/use-attivita";
+import { useUpdateAttivita, useMergeNastro } from "@/hooks/use-attivita";
 
 interface GanttBoardProps {
   attivitaList: Attivita[];
@@ -35,7 +35,7 @@ export function GanttBoard({
   pausaSpostamenti = "",
 }: GanttBoardProps) {
   const { mutate: updateAttivita } = useUpdateAttivita();
-  const { mutate: moveNastro } = useMoveNastro();
+  const { mutate: mergeNastro } = useMergeNastro();
 
   // Full unfiltered map for the merge suggester
   const allNastriMap = useMemo(() => {
@@ -106,12 +106,24 @@ export function GanttBoard({
     }
 
     if (activeData.type === "nastro-handle" && overData.type === "nastro") {
-      const sourceNastroId = activeData.nastroId as string;
-      const targetNastroId = overData.nastroId as string;
-      if (sourceNastroId !== targetNastroId) {
-        if (confirm(`Merge Nastro "${sourceNastroId}" in "${targetNastroId}"?`)) {
-          moveNastro({ oldNastroId: sourceNastroId, newNastroId: targetNastroId });
-        }
+      const nastroA = activeData.nastroId as string;
+      const nastroB = overData.nastroId as string;
+      if (nastroA === nastroB) return;
+
+      if (confirm(`Merge "${nastroA}" con "${nastroB}"?`)) {
+        // Determine temporal order: the nastro whose activities start earlier is the "target" (first)
+        const activitiesA = allNastriMap.get(nastroA) || [];
+        const activitiesB = allNastriMap.get(nastroB) || [];
+        const minStartA = activitiesA.length
+          ? Math.min(...activitiesA.map((a) => new Date(a.orarioInizio).getTime()))
+          : Infinity;
+        const minStartB = activitiesB.length
+          ? Math.min(...activitiesB.map((a) => new Date(a.orarioInizio).getTime()))
+          : Infinity;
+        // Earlier nastro = target (keeps its ID), later nastro = source (merged in, TA stripped from head)
+        const [targetId, sourceId] =
+          minStartA <= minStartB ? [nastroA, nastroB] : [nastroB, nastroA];
+        mergeNastro({ targetNastroId: targetId, sourceNastroId: sourceId });
       }
     }
   };
