@@ -139,7 +139,7 @@ export default function Dashboard() {
   const [sortBy, setSortBy] = useState<"name" | "start-time">("name");
   const [hideSosta, setHideSosta] = useState(false);
   const [hideTempoAccessorio, setHideTempoAccessorio] = useState(false);
-  const [durataMassima, setDurataMassima] = useState("");
+  const [durataMassima, setDurataMassima] = useState("08:15");
   const [pausaCorse, setPausaCorse] = useState("");
   const [pausaSpostamenti, setPausaSpostamenti] = useState("");
   const [showCronologia, setShowCronologia] = useState(false);
