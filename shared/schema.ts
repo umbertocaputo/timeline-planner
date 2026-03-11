@@ -20,6 +20,19 @@ export type Attivita = typeof attivita.$inferSelect;
 export type InsertAttivita = z.infer<typeof insertAttivitaSchema>;
 export type UpdateAttivitaRequest = Partial<InsertAttivita>;
 
+// Snapshot of the original uploaded attivita (used by the "Ripristina" button)
+export const attivitaSnapshot = pgTable("attivita_snapshot", {
+  id: serial("id").primaryKey(),
+  nastroId: text("nastro_id").notNull(),
+  idOrigine: text("id_punto_origine").notNull(),
+  idDestinazione: text("id_punto_destinazione").notNull(),
+  orarioInizio: text("orario_inizio_attivita").notNull(),
+  orarioFine: text("orario_fine_attivita").notNull(),
+  tipoAttivita: text("tipo_attivita").notNull(),
+  idCorsa: text("id_corsa"),
+  isBridgeCorsa: boolean("is_bridge_corsa").default(false),
+});
+
 // Transiti (transit stops for each corsa)
 export const transiti = pgTable("transiti", {
   id: serial("id").primaryKey(),

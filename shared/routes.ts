@@ -78,13 +78,40 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    insertInSosta: {
+      method: 'POST' as const,
+      path: '/api/nastri/insert-in-sosta' as const,
+      input: z.object({
+        hostNastroId: z.string(),
+        guestNastroId: z.string(),
+        sostaId: z.number(),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        404: errorSchemas.notFound,
+      },
+    },
     clearAll: {
       method: 'DELETE' as const,
       path: '/api/attivita' as const,
       responses: {
         204: z.void(),
       }
-    }
+    },
+    resetToSnapshot: {
+      method: 'POST' as const,
+      path: '/api/attivita/reset-snapshot' as const,
+      responses: {
+        200: z.object({ success: z.boolean() }),
+      },
+    },
+    hasSnapshot: {
+      method: 'GET' as const,
+      path: '/api/attivita/has-snapshot' as const,
+      responses: {
+        200: z.object({ hasSnapshot: z.boolean() }),
+      },
+    },
   },
   transiti: {
     list: {
@@ -130,3 +157,4 @@ export type AttivitaUpdateInput = z.infer<typeof api.attivita.update.input>;
 export type AttivitaResponse = z.infer<typeof api.attivita.list.responses[200]>;
 export type TransitiInput = z.infer<typeof api.transiti.bulkCreate.input>;
 export type MergeNastroInput = z.infer<typeof api.attivita.mergeNastro.input>;
+export type InsertInSostaInput = z.infer<typeof api.attivita.insertInSosta.input>;

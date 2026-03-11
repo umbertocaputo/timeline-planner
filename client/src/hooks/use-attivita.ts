@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type AttivitaInput, type AttivitaUpdateInput, type MergeNastroInput } from "@shared/routes";
+import { api, buildUrl, type AttivitaInput, type AttivitaUpdateInput, type MergeNastroInput, type InsertInSostaInput } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 
 export function useAttivita() {
@@ -9,6 +9,17 @@ export function useAttivita() {
       const res = await fetch(api.attivita.list.path, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch attivita");
       return api.attivita.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useHasSnapshot() {
+  return useQuery({
+    queryKey: [api.attivita.hasSnapshot.path],
+    queryFn: async () => {
+      const res = await fetch(api.attivita.hasSnapshot.path, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to check snapshot");
+      return api.attivita.hasSnapshot.responses[200].parse(await res.json());
     },
   });
 }
@@ -33,6 +44,7 @@ export function useBulkCreateAttivita() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.attivita.hasSnapshot.path] });
       toast({ title: "Import avvenuto con successo", description: "Dati caricati nella timeline." });
     },
     onError: (error) => {
@@ -139,6 +151,34 @@ export function useMergeNastro() {
   });
 }
 
+export function useInsertInSosta() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (input: InsertInSostaInput) => {
+      const res = await fetch(api.attivita.insertInSosta.path, {
+        method: api.attivita.insertInSosta.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message || "Inserimento fallito");
+      }
+      return api.attivita.insertInSosta.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      toast({ title: "Inserimento completato", description: "Nastro inserito nella sosta, tempi accessori rimossi." });
+    },
+    onError: (error) => {
+      toast({ title: "Inserimento fallito", description: (error as Error).message, variant: "destructive" });
+    }
+  });
+}
+
 export function useClearAllAttivita() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -154,6 +194,28 @@ export function useClearAllAttivita() {
     },
     onError: (error) => {
       toast({ title: "Eliminazione fallita", description: (error as Error).message, variant: "destructive" });
+    }
+  });
+}
+
+export function useResetToSnapshot() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch(api.attivita.resetToSnapshot.path, {
+        method: api.attivita.resetToSnapshot.method,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to reset to snapshot");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      toast({ title: "Soluzione ripristinata", description: "I dati sono stati riportati all'upload originale." });
+    },
+    onError: (error) => {
+      toast({ title: "Ripristino fallito", description: (error as Error).message, variant: "destructive" });
     }
   });
 }

@@ -8,34 +8,41 @@ import { useToast } from "@/hooks/use-toast";
 // Helper to parse potential Excel times or strings into standard format
 function parseExcelTime(val: any): string {
   if (typeof val === 'number') {
-    // Excel time fraction (e.g., 0.5 = 12:00 PM)
     const totalMinutes = Math.round(val * 24 * 60);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
-    
-    // Create a base date and set hours/minutes
     const d = new Date();
     d.setHours(hours, minutes, 0, 0);
     return d.toISOString();
   }
   
   if (typeof val === 'string') {
-    // Try to parse HH:mm or full dates
     if (val.match(/^\d{1,2}:\d{2}/)) {
       const [hh, mm] = val.split(':');
       const d = new Date();
       d.setHours(parseInt(hh, 10), parseInt(mm, 10), 0, 0);
       return d.toISOString();
     }
-    
-    // Fallback to trying to parse as a normal date string
     const d = new Date(val);
     if (!isNaN(d.getTime())) {
       return d.toISOString();
     }
   }
   
-  return new Date().toISOString(); // Ultimate fallback
+  return new Date().toISOString();
+}
+
+/**
+ * Normalize nastro IDs from the Ottimizzazione file.
+ * Ensures the numeric part is zero-padded to at least 2 digits.
+ * Examples: "N0GO" → "N00GO", "N1GO" → "N01GO", "N12GO" stays "N12GO".
+ */
+function normalizeNastroId(id: string): string {
+  const match = id.match(/^(N)(\d+)(GO)$/i);
+  if (!match) return id;
+  const [, prefix, digits, suffix] = match;
+  const padded = digits.padStart(2, "0");
+  return `${prefix}${padded}${suffix.toUpperCase()}`;
 }
 
 export function ExcelUploader() {
@@ -58,13 +65,12 @@ export function ExcelUploader() {
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         
-        // Convert to JSON
         const data: any[] = XLSX.utils.sheet_to_json(ws);
         
-        // Map to our schema
         const mappedData = data.map((row) => {
+          const rawNastroId = String(row.id_nastro || row.ID_NASTRO || "");
           return {
-            nastroId: String(row.id_nastro || row.ID_NASTRO || ""),
+            nastroId: normalizeNastroId(rawNastroId),
             idOrigine: String(row.id_punto_origine || row.ID_PUNTO_ORIGINE || ""),
             idDestinazione: String(row.id_punto_destinazione || row.ID_PUNTO_DESTINAZIONE || ""),
             orarioInizio: parseExcelTime(row.orario_inizio_attivita || row.ORARIO_INIZIO_ATTIVITA),
@@ -72,7 +78,7 @@ export function ExcelUploader() {
             tipoAttivita: String(row.tipo_attivita || row.TIPO_ATTIVITA || "Attivita"),
             idCorsa: row.id_corsa || row.ID_CORSA ? String(row.id_corsa || row.ID_CORSA) : null,
           };
-        }).filter(r => r.nastroId && r.idOrigine && r.idDestinazione); // Filter out empty rows
+        }).filter(r => r.nastroId && r.idOrigine && r.idDestinazione);
 
         if (mappedData.length === 0) {
           throw new Error("No valid data found in Excel. Check column names.");
@@ -88,7 +94,7 @@ export function ExcelUploader() {
       } finally {
         setIsParsing(false);
         if (fileInputRef.current) {
-          fileInputRef.current.value = ''; // Reset input
+          fileInputRef.current.value = '';
         }
       }
     };

@@ -79,10 +79,39 @@ export async function registerRoutes(
     }
   });
 
+  // Insert guest nastro inside a sosta of host nastro
+  app.post(api.attivita.insertInSosta.path, async (req, res) => {
+    try {
+      const input = api.attivita.insertInSosta.input.parse(req.body);
+      await storage.insertNastroInSosta(input.hostNastroId, input.guestNastroId, input.sostaId);
+      res.status(200).json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      throw err;
+    }
+  });
+
   app.delete(api.attivita.clearAll.path, async (req, res) => {
     try {
       await storage.clearAllAttivita();
       res.status(204).end();
+    } catch (err) {
+      throw err;
+    }
+  });
+
+  // Snapshot / reset
+  app.get(api.attivita.hasSnapshot.path, async (req, res) => {
+    const has = await storage.hasSnapshot();
+    res.json({ hasSnapshot: has });
+  });
+
+  app.post(api.attivita.resetToSnapshot.path, async (req, res) => {
+    try {
+      await storage.resetToSnapshot();
+      res.status(200).json({ success: true });
     } catch (err) {
       throw err;
     }

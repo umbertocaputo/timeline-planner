@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { CalendarDays, Trash2 } from "lucide-react";
+import { CalendarDays, Trash2, RotateCcw } from "lucide-react";
 import { ExcelUploader } from "@/components/ExcelUploader";
 import { TransitiUploader } from "@/components/TransitiUploader";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
-import { useAttivita, useClearAllAttivita } from "@/hooks/use-attivita";
+import { useAttivita, useClearAllAttivita, useResetToSnapshot, useHasSnapshot } from "@/hooks/use-attivita";
 import { useTransiti, useClearAllTransiti } from "@/hooks/use-transiti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,8 +19,10 @@ export default function Dashboard() {
   const [pausaSpostamenti, setPausaSpostamenti] = useState("");
   const { data: attivitaList, isLoading } = useAttivita();
   const { data: transitiList } = useTransiti();
+  const { data: snapshotInfo } = useHasSnapshot();
   const { mutate: clearAttivita, isPending: isClearingAttivita } = useClearAllAttivita();
   const { mutate: clearTransiti, isPending: isClearingTransiti } = useClearAllTransiti();
+  const { mutate: resetToSnapshot, isPending: isResetting } = useResetToSnapshot();
 
   const isClearing = isClearingAttivita || isClearingTransiti;
 
@@ -28,6 +30,12 @@ export default function Dashboard() {
     if (confirm("Sei sicuro di voler eliminare tutti i dati (nastri e transiti)? Questa azione è irreversibile.")) {
       clearAttivita();
       clearTransiti();
+    }
+  };
+
+  const handleRipristina = () => {
+    if (confirm("Ripristinare la soluzione all'upload originale? Tutte le modifiche (merge, ecc.) andranno perse.")) {
+      resetToSnapshot();
     }
   };
 
@@ -91,6 +99,20 @@ export default function Dashboard() {
                 >
                   {hideTempoAccessorio ? "Mostra" : "Nascondi"} T.A.
                 </Button>
+                {snapshotInfo?.hasSnapshot && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRipristina}
+                    disabled={isResetting}
+                    className="text-blue-600 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-950 border-blue-200 dark:border-blue-800"
+                    data-testid="button-reset-snapshot"
+                    title="Riporta i nastri allo stato dell'ultimo upload"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Ripristina
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
