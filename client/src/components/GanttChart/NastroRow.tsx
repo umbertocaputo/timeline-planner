@@ -175,6 +175,12 @@ export function NastroRow({
     return false;
   }, [sorted]);
 
+  // Non-circular nastro: starts and ends at different depots (informational, not an error).
+  const isNonCircular = useMemo(() => {
+    if (!first || !last) return false;
+    return first.idOrigine !== last.idDestinazione;
+  }, [first, last]);
+
   // ---- Merge suggestion algorithm ----
   const suggestions = useMemo<SuggestedNastro[]>(() => {
     if (!allNastriMap || !last || !first) return [];
@@ -314,17 +320,27 @@ export function NastroRow({
         flex h-16 border-b transition-colors duration-200 relative
         ${hasLocationMismatch
           ? "border-b-red-300 dark:border-b-red-800 bg-red-50/60 dark:bg-red-950/25"
-          : "border-b-border/50 bg-card"
+          : isNonCircular
+            ? "border-b-amber-300 dark:border-b-amber-800 bg-amber-50/40 dark:bg-amber-950/15"
+            : "border-b-border/50 bg-card"
         }
         ${isOver ? "bg-primary/5 ring-inset ring-2 ring-primary/20" : "hover:bg-muted/10"}
         ${isDragging ? "opacity-50" : ""}
       `}
     >
-      {/* Mismatch accent bar */}
+      {/* Mismatch accent bar (internal discontinuity — error) */}
       {hasLocationMismatch && (
         <div
           className="absolute left-52 top-0 bottom-0 w-1 bg-red-500 dark:bg-red-400 z-20 pointer-events-none"
-          title="Inizio e fine nastro in località diverse"
+          title="Discontinuità interna: una o più attività consecutive non sono collegate"
+        />
+      )}
+
+      {/* Non-circular accent bar (different start/end depot — informational) */}
+      {!hasLocationMismatch && isNonCircular && (
+        <div
+          className="absolute left-52 top-0 bottom-0 w-1 bg-amber-400 dark:bg-amber-500 z-20 pointer-events-none"
+          title={`Nastro non circolare: inizia a ${first?.idOrigine}, finisce a ${last?.idDestinazione}`}
         />
       )}
 
@@ -333,7 +349,9 @@ export function NastroRow({
         className={`w-52 shrink-0 border-r flex items-center px-2 gap-1 relative z-10 group transition-colors duration-200
           ${hasLocationMismatch
             ? "border-r-red-300 dark:border-r-red-700 bg-red-50 dark:bg-red-950/40"
-            : "border-r-border bg-card"
+            : isNonCircular
+              ? "border-r-amber-300 dark:border-r-amber-700 bg-amber-50/60 dark:bg-amber-950/30"
+              : "border-r-border bg-card"
           }
         `}
       >
@@ -354,6 +372,12 @@ export function NastroRow({
             <span className="text-xs text-muted-foreground font-mono shrink-0" title="Durata totale nastro">
               {duration}
             </span>
+            {isNonCircular && (
+              <ArrowRight
+                className="w-3 h-3 shrink-0 text-amber-500 dark:text-amber-400"
+                title={`Nastro non circolare: inizia a ${first?.idOrigine}, finisce a ${last?.idDestinazione}`}
+              />
+            )}
           </div>
           <div className="flex items-center text-[10px] text-muted-foreground gap-1 mt-0.5">
             {first && (
