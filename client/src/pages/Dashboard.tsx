@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { CalendarDays, Trash2 } from "lucide-react";
 import { ExcelUploader } from "@/components/ExcelUploader";
+import { TransitiUploader } from "@/components/TransitiUploader";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
 import { useAttivita, useClearAllAttivita } from "@/hooks/use-attivita";
+import { useTransiti } from "@/hooks/use-transiti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +17,7 @@ export default function Dashboard() {
   const [durataMassima, setDurataMassima] = useState("");
   const [pausaMinima, setPausaMinima] = useState("");
   const { data: attivitaList, isLoading } = useAttivita();
+  const { data: transitiList } = useTransiti();
   const { mutate: clearAll, isPending: isClearing } = useClearAllAttivita();
 
   return (
@@ -95,10 +98,11 @@ export default function Dashboard() {
               </>
             )}
             <ExcelUploader />
+            <TransitiUploader />
           </div>
         </div>
 
-        {/* Parametri merge suggerito */}
+        {/* Parametri merge */}
         {attivitaList && attivitaList.length > 0 && (
           <div className="flex items-center gap-4 flex-wrap bg-muted/40 border border-border rounded-lg px-4 py-2">
             <div className="flex items-center gap-2">
@@ -132,7 +136,7 @@ export default function Dashboard() {
               />
             </div>
             <span className="text-xs text-muted-foreground">
-              Parametri utilizzati dal suggeritore di merge
+              Parametri suggeritore merge
             </span>
           </div>
         )}
@@ -150,6 +154,7 @@ export default function Dashboard() {
         ) : (
           <GanttBoard
             attivitaList={attivitaList || []}
+            transitiList={transitiList || []}
             sortBy={sortBy}
             hideSosta={hideSosta}
             hideTempoAccessorio={hideTempoAccessorio}

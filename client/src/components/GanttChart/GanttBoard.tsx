@@ -1,20 +1,21 @@
 import { useMemo } from "react";
-import { 
-  DndContext, 
-  DragEndEvent, 
-  MouseSensor, 
-  TouchSensor, 
-  useSensor, 
-  useSensors 
+import {
+  DndContext,
+  DragEndEvent,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
 } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
-import { type Attivita } from "@shared/schema";
+import { type Attivita, type Transito } from "@shared/schema";
 import { TimelineHeader } from "./TimelineHeader";
 import { NastroRow } from "./NastroRow";
 import { useUpdateAttivita, useMoveNastro } from "@/hooks/use-attivita";
 
 interface GanttBoardProps {
   attivitaList: Attivita[];
+  transitiList?: Transito[];
   sortBy?: "name" | "start-time";
   hideSosta?: boolean;
   hideTempoAccessorio?: boolean;
@@ -24,6 +25,7 @@ interface GanttBoardProps {
 
 export function GanttBoard({
   attivitaList,
+  transitiList = [],
   sortBy = "name",
   hideSosta = false,
   hideTempoAccessorio = false,
@@ -33,10 +35,10 @@ export function GanttBoard({
   const { mutate: updateAttivita } = useUpdateAttivita();
   const { mutate: moveNastro } = useMoveNastro();
 
-  // Build a full (unfiltered) map of all nastri for the merge suggester
+  // Full unfiltered map for the merge suggester
   const allNastriMap = useMemo(() => {
     const map = new Map<string, Attivita[]>();
-    attivitaList.forEach(att => {
+    attivitaList.forEach((att) => {
       const existing = map.get(att.nastroId) || [];
       existing.push(att);
       map.set(att.nastroId, existing);
@@ -44,29 +46,40 @@ export function GanttBoard({
     return map;
   }, [attivitaList]);
 
-  // Group activities by Nastro (filtered for display)
+  // Group transiti by IDCorsa for bridge-corsa lookup
+  const transitiByCorsa = useMemo(() => {
+    const map = new Map<string, Transito[]>();
+    transitiList.forEach((t) => {
+      const existing = map.get(t.idCorsa) || [];
+      existing.push(t);
+      map.set(t.idCorsa, existing);
+    });
+    return map;
+  }, [transitiList]);
+
+  // Filtered + sorted display groups
   const nastri = useMemo(() => {
     const groups = new Map<string, Attivita[]>();
-    attivitaList.forEach(att => {
+    attivitaList.forEach((att) => {
       if (hideSosta && att.tipoAttivita.toLowerCase() === "sosta") return;
       if (hideTempoAccessorio && att.tipoAttivita.toLowerCase() === "tempo accessorio") return;
       const existing = groups.get(att.nastroId) || [];
       existing.push(att);
       groups.set(att.nastroId, existing);
     });
-    
+
     const entries = Array.from(groups.entries());
-    
+
     if (sortBy === "start-time") {
       entries.sort((a, b) => {
-        const aMin = Math.min(...a[1].map(att => new Date(att.orarioInizio).getTime()));
-        const bMin = Math.min(...b[1].map(att => new Date(att.orarioInizio).getTime()));
+        const aMin = Math.min(...a[1].map((att) => new Date(att.orarioInizio).getTime()));
+        const bMin = Math.min(...b[1].map((att) => new Date(att.orarioInizio).getTime()));
         return aMin - bMin;
       });
     } else {
       entries.sort((a, b) => a[0].localeCompare(b[0]));
     }
-    
+
     return entries.filter(([_, items]) => items.length > 0);
   }, [attivitaList, sortBy, hideSosta, hideTempoAccessorio]);
 
@@ -78,16 +91,15 @@ export function GanttBoard({
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over) return;
-
     const activeData = active.data.current;
     const overData = over.data.current;
     if (!activeData || !overData) return;
 
     if (activeData.type === "attivita" && overData.type === "nastro") {
-      const attivita = activeData.attivita as Attivita;
+      const att = activeData.attivita as Attivita;
       const targetNastroId = overData.nastroId as string;
-      if (attivita.nastroId !== targetNastroId) {
-        updateAttivita({ id: attivita.id, nastroId: targetNastroId });
+      if (att.nastroId !== targetNastroId) {
+        updateAttivita({ id: att.id, nastroId: targetNastroId });
       }
     }
 
@@ -95,7 +107,7 @@ export function GanttBoard({
       const sourceNastroId = activeData.nastroId as string;
       const targetNastroId = overData.nastroId as string;
       if (sourceNastroId !== targetNastroId) {
-        if (confirm(`Merge Nastro "${sourceNastroId}" into "${targetNastroId}"?`)) {
+        if (confirm(`Merge Nastro "${sourceNastroId}" in "${targetNastroId}"?`)) {
           moveNastro({ oldNastroId: sourceNastroId, newNastroId: targetNastroId });
         }
       }
@@ -104,15 +116,10 @@ export function GanttBoard({
 
   return (
     <div className="flex flex-col h-full bg-card rounded-xl border border-border shadow-md shadow-black/5 overflow-hidden">
-      <DndContext 
-        sensors={sensors} 
-        onDragEnd={handleDragEnd}
-        modifiers={[restrictToWindowEdges]}
-      >
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd} modifiers={[restrictToWindowEdges]}>
         <div className="flex-1 overflow-auto custom-scrollbar">
           <div className="min-w-[1000px] h-full flex flex-col">
             <TimelineHeader />
-            
             <div className="flex-1 flex flex-col relative">
               {nastri.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-12">
@@ -131,6 +138,7 @@ export function GanttBoard({
                     nastroId={nastroId}
                     attivitaList={attivita}
                     allNastriMap={allNastriMap}
+                    transitiByCorsa={transitiByCorsa}
                     durataMassima={durataMassima}
                     pausaMinima={pausaMinima}
                   />

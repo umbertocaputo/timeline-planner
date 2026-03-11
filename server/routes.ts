@@ -8,6 +8,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // ---- Attivita ----
   app.get(api.attivita.list.path, async (req, res) => {
     const data = await storage.getAttivitaList();
     res.json(data);
@@ -20,10 +21,7 @@ export async function registerRoutes(
       res.status(201).json(data);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
-        });
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       }
       throw err;
     }
@@ -33,20 +31,13 @@ export async function registerRoutes(
     try {
       const input = api.attivita.update.input.parse(req.body);
       const id = Number(req.params.id);
-      
       const existing = await storage.getAttivita(id);
-      if (!existing) {
-        return res.status(404).json({ message: "Attivita non trovata" });
-      }
-
+      if (!existing) return res.status(404).json({ message: "Attivita non trovata" });
       const updated = await storage.updateAttivita(id, input);
       res.status(200).json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
-        });
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
       }
       throw err;
     }
@@ -56,10 +47,7 @@ export async function registerRoutes(
     try {
       const id = Number(req.params.id);
       const existing = await storage.getAttivita(id);
-      if (!existing) {
-        return res.status(404).json({ message: "Attivita non trovata" });
-      }
-
+      if (!existing) return res.status(404).json({ message: "Attivita non trovata" });
       await storage.deleteAttivita(id);
       res.status(204).end();
     } catch (err) {
@@ -77,9 +65,51 @@ export async function registerRoutes(
     }
   });
 
+  // Smart merge: handles TA cleanup and bridge corsa insertion
+  app.post(api.attivita.mergeNastro.path, async (req, res) => {
+    try {
+      const input = api.attivita.mergeNastro.input.parse(req.body);
+      await storage.mergeNastro(input.targetNastroId, input.sourceNastroId, input.bridgeCorsa);
+      res.status(200).json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      throw err;
+    }
+  });
+
   app.delete(api.attivita.clearAll.path, async (req, res) => {
     try {
       await storage.clearAllAttivita();
+      res.status(204).end();
+    } catch (err) {
+      throw err;
+    }
+  });
+
+  // ---- Transiti ----
+  app.get(api.transiti.list.path, async (req, res) => {
+    const data = await storage.getTransitiList();
+    res.json(data);
+  });
+
+  app.post(api.transiti.bulkCreate.path, async (req, res) => {
+    try {
+      const input = api.transiti.bulkCreate.input.parse(req.body);
+      const data = await storage.bulkCreateTransiti(input);
+      res.status(201).json(data);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.transiti.clearAll.path, async (req, res) => {
+    try {
+      await storage.clearAllTransiti();
       res.status(204).end();
     } catch (err) {
       throw err;

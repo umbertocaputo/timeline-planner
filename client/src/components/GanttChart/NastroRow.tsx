@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { useDroppable, useDraggable } from "@dnd-kit/core";
-import { type Attivita } from "@shared/schema";
+import { type Attivita, type Transito } from "@shared/schema";
 import { AttivitaItem } from "./AttivitaItem";
 import { stringToColor } from "@/lib/color-utils";
 import { getPercentageOfDay } from "./TimeUtils";
-import { GripVertical, Lightbulb, Merge, Clock, MapPin } from "lucide-react";
-import { useMoveNastro } from "@/hooks/use-attivita";
+import { GripVertical, Lightbulb, Merge, Clock, MapPin, ArrowRight } from "lucide-react";
+import { useMergeNastro } from "@/hooks/use-attivita";
 import {
   Popover,
   PopoverContent,
@@ -17,8 +17,17 @@ interface NastroRowProps {
   nastroId: string;
   attivitaList: Attivita[];
   allNastriMap?: Map<string, Attivita[]>;
+  transitiByCorsa?: Map<string, Transito[]>;
   durataMassima?: string;
   pausaMinima?: string;
+}
+
+interface BridgeCorsaInfo {
+  idCorsa: string;
+  idOrigine: string;
+  idDestinazione: string;
+  orarioInizio: string;  // departure from endLoc
+  orarioFine: string;    // arrival at startLoc
 }
 
 interface SuggestedNastro {
@@ -27,17 +36,16 @@ interface SuggestedNastro {
   endLocation: string;
   totalDurationMins: number;
   gapMins: number;
+  bridgeCorsa?: BridgeCorsaInfo;
 }
 
 function parseDurataMassima(value: string): number | null {
   if (!value.trim()) return null;
-  // Support hh:mm format
   if (value.includes(":")) {
     const [h, m] = value.split(":").map(Number);
     if (isNaN(h) || isNaN(m)) return null;
     return h * 60 + m;
   }
-  // Support plain minutes
   const mins = parseInt(value);
   return isNaN(mins) ? null : mins;
 }
@@ -48,15 +56,62 @@ function formatMinutes(mins: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/**
+ * Given a transiti map, find a bridge corsa that:
+ * - Passes through `fromLoc` (stop with departure >= minDepartureTime)
+ * - Then passes through `toLoc` (at a later stop, with arrival <= maxArrivalTime)
+ * Returns the first valid match.
+ */
+function findBridgeCorsa(
+  transitiByCorsa: Map<string, Transito[]>,
+  fromLoc: string,
+  toLoc: string,
+  minDepartureMs: number,
+  maxArrivalMs: number
+): BridgeCorsaInfo | null {
+  for (const [idCorsa, stops] of transitiByCorsa) {
+    const sorted = [...stops].sort((a, b) => a.sequenza - b.sequenza);
+
+    // Find a stop at fromLoc
+    const fromStopIdx = sorted.findIndex(
+      (s) => s.idPunto === fromLoc && s.orarioPartenza
+    );
+    if (fromStopIdx === -1) continue;
+
+    const fromStop = sorted[fromStopIdx];
+    const departureMs = new Date(fromStop.orarioPartenza!).getTime();
+    if (departureMs < minDepartureMs) continue;
+
+    // Find a later stop at toLoc
+    const toStop = sorted.slice(fromStopIdx + 1).find(
+      (s) => s.idPunto === toLoc && s.orarioArrivo
+    );
+    if (!toStop) continue;
+
+    const arrivalMs = new Date(toStop.orarioArrivo!).getTime();
+    if (arrivalMs > maxArrivalMs) continue;
+
+    return {
+      idCorsa,
+      idOrigine: fromLoc,
+      idDestinazione: toLoc,
+      orarioInizio: fromStop.orarioPartenza!,
+      orarioFine: toStop.orarioArrivo!,
+    };
+  }
+  return null;
+}
+
 export function NastroRow({
   nastroId,
   attivitaList,
   allNastriMap,
+  transitiByCorsa = new Map(),
   durataMassima = "",
   pausaMinima = "",
 }: NastroRowProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const { mutate: moveNastro } = useMoveNastro();
+  const { mutate: mergeNastro, isPending: isMerging } = useMergeNastro();
 
   const sorted = useMemo(
     () =>
@@ -72,35 +127,33 @@ export function NastroRow({
 
   const calculateDuration = () => {
     if (!first || !last) return "00:00";
-    const diffMs =
-      new Date(last.orarioFine).getTime() -
-      new Date(first.orarioInizio).getTime();
-    const diffMins = Math.floor(diffMs / 60000);
+    const diffMins = Math.floor(
+      (new Date(last.orarioFine).getTime() - new Date(first.orarioInizio).getTime()) / 60000
+    );
     return formatMinutes(diffMins);
   };
 
   const duration = calculateDuration();
-  const hasLocationMismatch =
-    first && last && first.idOrigine !== last.idDestinazione;
+  const hasLocationMismatch = first && last && first.idOrigine !== last.idDestinazione;
 
-  // ---- Merge suggestion algorithm ----
+  // ---- Merge suggestion algorithm (same-location + bridge corsa) ----
   const suggestions = useMemo<SuggestedNastro[]>(() => {
     if (!allNastriMap || !last || !first) return [];
 
     const durataMassimaMinutes = parseDurataMassima(durataMassima);
-    const pausaMinimaMinutes = pausaMinima.trim()
-      ? parseInt(pausaMinima) || 10
-      : 10;
+    const pausaMinimaMinutes = pausaMinima.trim() ? parseInt(pausaMinima) || 10 : 10;
+    const pausaMinimaMs = pausaMinimaMinutes * 60000;
 
     const currentDurationMins =
-      (new Date(last.orarioFine).getTime() -
-        new Date(first.orarioInizio).getTime()) /
-      60000;
+      (new Date(last.orarioFine).getTime() - new Date(first.orarioInizio).getTime()) / 60000;
 
     // Last "corsa in linea" in current nastro
     const lastCorsaAttuale = [...sorted]
       .reverse()
       .find((a) => a.tipoAttivita.toLowerCase() === "corsa in linea");
+
+    const endTime = new Date(last.orarioFine).getTime();
+    const endLoc = last.idDestinazione;
 
     const results: SuggestedNastro[] = [];
 
@@ -108,60 +161,79 @@ export function NastroRow({
       if (candidateId === nastroId) return;
 
       const sortedCandidate = [...candidateActivities].sort(
-        (a, b) =>
-          new Date(a.orarioInizio).getTime() - new Date(b.orarioInizio).getTime()
+        (a, b) => new Date(a.orarioInizio).getTime() - new Date(b.orarioInizio).getTime()
       );
 
       const candidateFirst = sortedCandidate[0];
       const candidateLast = sortedCandidate[sortedCandidate.length - 1];
       if (!candidateFirst || !candidateLast) return;
 
-      // Must start from the same location as current nastro ends
-      if (candidateFirst.idOrigine !== last.idDestinazione) return;
+      // Candidate must start AFTER current nastro ends
+      if (new Date(candidateFirst.orarioInizio).getTime() < endTime) return;
 
-      // Must start after current nastro ends
-      if (
-        new Date(candidateFirst.orarioInizio).getTime() <
-        new Date(last.orarioFine).getTime()
-      )
-        return;
-
-      // Check pause between last corsa of current and first corsa of candidate
       const firstCorsaCandidate = sortedCandidate.find(
         (a) => a.tipoAttivita.toLowerCase() === "corsa in linea"
       );
+      const candidateFirstCorsaStart = firstCorsaCandidate
+        ? new Date(firstCorsaCandidate.orarioInizio).getTime()
+        : new Date(candidateFirst.orarioInizio).getTime();
 
-      let gapMins = Infinity;
-      if (lastCorsaAttuale && firstCorsaCandidate) {
+      let gapMins = 0;
+      let bridgeCorsa: BridgeCorsaInfo | undefined;
+
+      if (candidateFirst.idOrigine === endLoc) {
+        // ---- Direct match (same location) ----
+        if (lastCorsaAttuale && firstCorsaCandidate) {
+          gapMins =
+            (new Date(firstCorsaCandidate.orarioInizio).getTime() -
+              new Date(lastCorsaAttuale.orarioFine).getTime()) /
+            60000;
+          if (gapMins < pausaMinimaMinutes) return;
+        }
+      } else {
+        // ---- Bridge corsa needed ----
+        if (transitiByCorsa.size === 0) return;
+
+        const minDeparture = endTime + pausaMinimaMs;
+        const maxArrival = candidateFirstCorsaStart - pausaMinimaMs;
+
+        if (minDeparture >= maxArrival) return;
+
+        const bridge = findBridgeCorsa(
+          transitiByCorsa,
+          endLoc,
+          candidateFirst.idOrigine,
+          minDeparture,
+          maxArrival
+        );
+
+        if (!bridge) return;
+
+        bridgeCorsa = bridge;
         gapMins =
-          (new Date(firstCorsaCandidate.orarioInizio).getTime() -
-            new Date(lastCorsaAttuale.orarioFine).getTime()) /
-          60000;
-        if (gapMins < pausaMinimaMinutes) return;
+          (new Date(bridge.orarioInizio).getTime() - endTime) / 60000;
       }
 
-      // Total merged duration = from start of current nastro to end of candidate nastro
-      // This is the actual span of the merged nastro (includes the gap between them)
+      // Total merged duration: from start of current to end of candidate
       const totalDurationMins =
         (new Date(candidateLast.orarioFine).getTime() -
           new Date(first.orarioInizio).getTime()) /
         60000;
 
-      // Check total duration constraint
-      if (durataMassimaMinutes !== null && totalDurationMins > durataMassimaMinutes)
-        return;
+      if (durataMassimaMinutes !== null && totalDurationMins > durataMassimaMinutes) return;
 
       results.push({
         nastroId: candidateId,
         startLocation: candidateFirst.idOrigine,
         endLocation: candidateLast.idDestinazione,
         totalDurationMins,
-        gapMins: gapMins === Infinity ? 0 : gapMins,
+        gapMins,
+        bridgeCorsa,
       });
     });
 
     return results.sort((a, b) => a.totalDurationMins - b.totalDurationMins);
-  }, [allNastriMap, nastroId, sorted, last, first, durataMassima, pausaMinima]);
+  }, [allNastriMap, nastroId, sorted, last, first, durataMassima, pausaMinima, transitiByCorsa]);
 
   // ---- DnD ----
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
@@ -179,6 +251,21 @@ export function NastroRow({
     data: { type: "nastro-handle", nastroId },
   });
 
+  const handleMerge = (sug: SuggestedNastro) => {
+    const label = sug.bridgeCorsa
+      ? `Merge "${sug.nastroId}" in "${nastroId}" con corsa ponte ${sug.bridgeCorsa.idCorsa}?\n\nI tempi accessori di arrivo del nastro corrente e di partenza del nastro suggerito verranno eliminati.`
+      : `Merge "${sug.nastroId}" in "${nastroId}"?\n\nI tempi accessori di arrivo del nastro corrente e di partenza del nastro suggerito verranno eliminati.`;
+
+    if (confirm(label)) {
+      mergeNastro({
+        targetNastroId: nastroId,
+        sourceNastroId: sug.nastroId,
+        bridgeCorsa: sug.bridgeCorsa,
+      });
+      setPopoverOpen(false);
+    }
+  };
+
   return (
     <div
       ref={setDroppableRef}
@@ -192,7 +279,7 @@ export function NastroRow({
         ${isDragging ? "opacity-50" : ""}
       `}
     >
-      {/* Mismatch accent bar — vivid left stripe on the timeline side */}
+      {/* Mismatch accent bar */}
       {hasLocationMismatch && (
         <div
           className="absolute left-52 top-0 bottom-0 w-1 bg-red-500 dark:bg-red-400 z-20 pointer-events-none"
@@ -201,12 +288,14 @@ export function NastroRow({
       )}
 
       {/* Row Label */}
-      <div className={`w-52 shrink-0 border-r flex items-center px-2 gap-1 relative z-10 group transition-colors duration-200
-        ${hasLocationMismatch
-          ? "border-r-red-300 dark:border-r-red-700 bg-red-50 dark:bg-red-950/40"
-          : "border-r-border bg-card"
-        }
-      `}>
+      <div
+        className={`w-52 shrink-0 border-r flex items-center px-2 gap-1 relative z-10 group transition-colors duration-200
+          ${hasLocationMismatch
+            ? "border-r-red-300 dark:border-r-red-700 bg-red-50 dark:bg-red-950/40"
+            : "border-r-border bg-card"
+          }
+        `}
+      >
         <div
           ref={setDraggableRef}
           {...attributes}
@@ -242,7 +331,7 @@ export function NastroRow({
           </div>
         </div>
 
-        {/* Merge suggestion button */}
+        {/* Suggestion button */}
         {allNastriMap && (
           <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
             <PopoverTrigger asChild>
@@ -264,16 +353,15 @@ export function NastroRow({
                 <Lightbulb className="w-4 h-4" />
               </button>
             </PopoverTrigger>
-            <PopoverContent
-              className="w-80 p-0"
-              side="right"
-              align="start"
-              sideOffset={8}
-            >
+            <PopoverContent className="w-96 p-0" side="right" align="start" sideOffset={8}>
               <div className="px-4 py-3 border-b border-border">
                 <p className="text-sm font-semibold">Suggerimenti merge per {nastroId}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Nastri che iniziano da <span className="font-medium text-foreground">{last?.idDestinazione}</span>
+                  Fine nastro in{" "}
+                  <span className="font-medium text-foreground">{last?.idDestinazione}</span>
+                  {transitiByCorsa.size > 0 && (
+                    <span className="ml-1 text-amber-600">· transiti disponibili</span>
+                  )}
                 </p>
               </div>
 
@@ -281,12 +369,22 @@ export function NastroRow({
                 <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                   Nessun nastro compatibile trovato.
                   <br />
-                  <span className="text-xs">Controlla i parametri di durata e pausa.</span>
+                  <span className="text-xs">
+                    Controlla i parametri di durata e pausa.
+                    {transitiByCorsa.size === 0 && (
+                      <span className="block mt-1 text-amber-600">
+                        Carica il file transiti per trovare nastri con corsa ponte.
+                      </span>
+                    )}
+                  </span>
                 </div>
               ) : (
-                <div className="max-h-64 overflow-y-auto divide-y divide-border">
+                <div className="max-h-72 overflow-y-auto divide-y divide-border">
                   {suggestions.map((sug) => (
-                    <div key={sug.nastroId} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors">
+                    <div
+                      key={sug.nastroId}
+                      className="flex items-start gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors"
+                    >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="text-sm font-semibold">{sug.nastroId}</span>
@@ -296,6 +394,17 @@ export function NastroRow({
                           />
                           <span className="text-xs text-muted-foreground truncate">{sug.endLocation}</span>
                         </div>
+
+                        {/* Bridge corsa indicator */}
+                        {sug.bridgeCorsa && (
+                          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-700 dark:text-amber-400 bg-yellow-50 dark:bg-yellow-950/40 rounded px-1.5 py-0.5 w-fit">
+                            <ArrowRight className="w-3 h-3 shrink-0" />
+                            <span>
+                              Corsa {sug.bridgeCorsa.idCorsa}: {sug.bridgeCorsa.idOrigine} → {sug.bridgeCorsa.idDestinazione}
+                            </span>
+                          </div>
+                        )}
+
                         <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                           <span className="flex items-center gap-0.5">
                             <Clock className="w-3 h-3" />
@@ -304,28 +413,18 @@ export function NastroRow({
                           {sug.gapMins > 0 && (
                             <span className="flex items-center gap-0.5">
                               <MapPin className="w-3 h-3" />
-                              pausa {Math.round(sug.gapMins)}m
+                              attesa {Math.round(sug.gapMins)}m
                             </span>
                           )}
                         </div>
                       </div>
+
                       <Button
                         size="sm"
                         variant="outline"
                         className="shrink-0 h-7 px-2 text-xs"
-                        onClick={() => {
-                          if (
-                            confirm(
-                              `Merge Nastro "${sug.nastroId}" in "${nastroId}"?`
-                            )
-                          ) {
-                            moveNastro({
-                              oldNastroId: sug.nastroId,
-                              newNastroId: nastroId,
-                            });
-                            setPopoverOpen(false);
-                          }
-                        }}
+                        disabled={isMerging}
+                        onClick={() => handleMerge(sug)}
                         data-testid={`button-do-merge-${nastroId}-${sug.nastroId}`}
                       >
                         <Merge className="w-3 h-3 mr-1" />
@@ -346,7 +445,7 @@ export function NastroRow({
           <AttivitaItem key={att.id} attivita={att} />
         ))}
 
-        {/* Mismatch indicators (red triangles) */}
+        {/* Mismatch triangles between consecutive activities */}
         {sorted.map((att, idx) => {
           if (idx >= sorted.length - 1) return null;
           const next = sorted[idx + 1];
@@ -356,13 +455,7 @@ export function NastroRow({
             <svg
               key={`mismatch-${att.id}-${next.id}`}
               className="absolute transition-opacity opacity-70 hover:opacity-100 pointer-events-auto"
-              style={{
-                left: `${position}%`,
-                top: "56px",
-                width: "20px",
-                height: "20px",
-                marginLeft: "-10px",
-              }}
+              style={{ left: `${position}%`, top: "56px", width: "20px", height: "20px", marginLeft: "-10px" }}
               viewBox="0 0 20 20"
               title={`Mismatch: ${att.idDestinazione} → ${next.idOrigine}`}
             >

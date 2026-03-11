@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type AttivitaInput, type AttivitaUpdateInput } from "@shared/routes";
+import { api, buildUrl, type AttivitaInput, type AttivitaUpdateInput, type MergeNastroInput } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 
 export function useAttivita() {
@@ -33,10 +33,10 @@ export function useBulkCreateAttivita() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
-      toast({ title: "Import successful", description: "Data has been loaded to the timeline." });
+      toast({ title: "Import avvenuto con successo", description: "Dati caricati nella timeline." });
     },
     onError: (error) => {
-      toast({ title: "Import failed", description: error.message, variant: "destructive" });
+      toast({ title: "Import fallito", description: (error as Error).message, variant: "destructive" });
     }
   });
 }
@@ -61,7 +61,7 @@ export function useUpdateAttivita() {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
     },
     onError: (error) => {
-      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+      toast({ title: "Aggiornamento fallito", description: (error as Error).message, variant: "destructive" });
     }
   });
 }
@@ -80,7 +80,7 @@ export function useDeleteAttivita() {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
     },
     onError: (error) => {
-      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+      toast({ title: "Eliminazione fallita", description: (error as Error).message, variant: "destructive" });
     }
   });
 }
@@ -92,21 +92,49 @@ export function useMoveNastro() {
   return useMutation({
     mutationFn: async ({ oldNastroId, newNastroId }: { oldNastroId: string, newNastroId: string }) => {
       const url = buildUrl(api.attivita.moveNastro.path, { oldNastroId, newNastroId });
-      const res = await fetch(url, { 
-        method: api.attivita.moveNastro.method, 
+      const res = await fetch(url, {
+        method: api.attivita.moveNastro.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
-        credentials: "include" 
+        credentials: "include"
       });
       if (!res.ok) throw new Error("Failed to move nastro");
       return api.attivita.moveNastro.responses[200].parse(await res.json());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
-      toast({ title: "Merged successfully", description: "The activities have been moved." });
+      toast({ title: "Merge completato", description: "Le attività sono state spostate." });
     },
     onError: (error) => {
-      toast({ title: "Merge failed", description: error.message, variant: "destructive" });
+      toast({ title: "Merge fallito", description: (error as Error).message, variant: "destructive" });
+    }
+  });
+}
+
+export function useMergeNastro() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (input: MergeNastroInput) => {
+      const res = await fetch(api.attivita.mergeNastro.path, {
+        method: api.attivita.mergeNastro.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message || "Merge fallito");
+      }
+      return api.attivita.mergeNastro.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      toast({ title: "Merge completato", description: "Nastri uniti, tempi accessori rimossi." });
+    },
+    onError: (error) => {
+      toast({ title: "Merge fallito", description: (error as Error).message, variant: "destructive" });
     }
   });
 }
@@ -122,10 +150,10 @@ export function useClearAllAttivita() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
-      toast({ title: "Data cleared", description: "All activities have been removed." });
+      toast({ title: "Dati eliminati", description: "Tutte le attività sono state rimosse." });
     },
     onError: (error) => {
-      toast({ title: "Clear failed", description: error.message, variant: "destructive" });
+      toast({ title: "Eliminazione fallita", description: (error as Error).message, variant: "destructive" });
     }
   });
 }
