@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight, MoveRight, Bus } from "lucide-react";
+import { useState, useMemo } from "react";
+import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight, MoveRight, Bus, ListFilter } from "lucide-react";
 import { ExcelUploader } from "@/components/ExcelUploader";
 import { TransitiUploader } from "@/components/TransitiUploader";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { type MergeLogEntry } from "@shared/schema";
+import { type MergeLogEntry, type Transito, type Attivita } from "@shared/schema";
 
 function formatTimestamp(iso: string): string {
   try {
@@ -135,14 +135,107 @@ function MergeLogDialog({ open, onClose, entries }: { open: boolean; onClose: ()
   );
 }
 
+interface CorsaInfo {
+  idCorsa: string;
+  idOrigine: string;
+  idDestinazione: string;
+  orarioPartenza: string;
+  orarioArrivo: string;
+}
+
+function formatTimeFromIso(iso: string | null | undefined): string {
+  if (!iso) return "--:--";
+  try {
+    const d = new Date(iso);
+    const h = d.getUTCHours().toString().padStart(2, "0");
+    const m = d.getUTCMinutes().toString().padStart(2, "0");
+    return `${h}:${m}`;
+  } catch {
+    return iso.slice(11, 16) ?? "--:--";
+  }
+}
+
+function buildCorseInfoFromTransiti(transitiList: Transito[]): CorsaInfo[] {
+  const byCorsa = new Map<string, Transito[]>();
+  for (const t of transitiList) {
+    if (!byCorsa.has(t.idCorsa)) byCorsa.set(t.idCorsa, []);
+    byCorsa.get(t.idCorsa)!.push(t);
+  }
+  const result: CorsaInfo[] = [];
+  for (const [idCorsa, fermate] of byCorsa) {
+    const sorted = [...fermate].sort((a, b) => a.sequenza - b.sequenza);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    result.push({
+      idCorsa,
+      idOrigine: first.idPunto,
+      idDestinazione: last.idPunto,
+      orarioPartenza: first.orarioPartenza ?? first.orarioArrivo ?? "",
+      orarioArrivo: last.orarioArrivo ?? last.orarioPartenza ?? "",
+    });
+  }
+  return result.sort((a, b) => a.orarioPartenza.localeCompare(b.orarioPartenza));
+}
+
+function CorseNonAssegnateDialog({
+  open,
+  onClose,
+  corseNonAssegnate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  corseNonAssegnate: CorsaInfo[];
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ListFilter className="w-4 h-4" />
+            Corse non assegnate ai nastri
+            <Badge variant="secondary" className="ml-1 text-xs">
+              {corseNonAssegnate.length}
+            </Badge>
+          </DialogTitle>
+        </DialogHeader>
+
+        {corseNonAssegnate.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            Tutte le corse dei transiti sono già presenti nei nastri come corse in linea.
+          </div>
+        ) : (
+          <div className="max-h-96 overflow-y-auto divide-y divide-border -mx-6 px-6">
+            {corseNonAssegnate.map((corsa) => (
+              <div key={corsa.idCorsa} className="flex items-center gap-3 py-2.5" data-testid={`row-corsa-non-assegnata-${corsa.idCorsa}`}>
+                <span className="font-mono text-sm font-semibold w-20 shrink-0 text-foreground">
+                  {corsa.idCorsa}
+                </span>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground flex-1 min-w-0">
+                  <span className="truncate max-w-[64px]">{corsa.idOrigine}</span>
+                  <ArrowRight className="w-3 h-3 shrink-0" />
+                  <span className="truncate max-w-[64px]">{corsa.idDestinazione}</span>
+                </div>
+                <span className="font-mono text-xs text-muted-foreground shrink-0">
+                  {formatTimeFromIso(corsa.orarioPartenza)} – {formatTimeFromIso(corsa.orarioArrivo)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Dashboard() {
   const [sortBy, setSortBy] = useState<"name" | "start-time">("name");
-  const [hideSosta, setHideSosta] = useState(false);
+  const [hideSosta, setHideSosta] = useState(true);
   const [hideTempoAccessorio, setHideTempoAccessorio] = useState(false);
   const [durataMassima, setDurataMassima] = useState("08:15");
   const [pausaCorse, setPausaCorse] = useState("");
   const [pausaSpostamenti, setPausaSpostamenti] = useState("");
   const [showCronologia, setShowCronologia] = useState(false);
+  const [showCorseNonAssegnate, setShowCorseNonAssegnate] = useState(false);
 
   const { data: attivitaList, isLoading } = useAttivita();
   const { data: transitiList } = useTransiti();
@@ -154,6 +247,18 @@ export default function Dashboard() {
 
   const isClearing = isClearingAttivita || isClearingTransiti;
   const mergeCount = mergeLogEntries?.length ?? 0;
+
+  const corseNonAssegnate = useMemo(() => {
+    if (!transitiList || transitiList.length === 0) return [];
+    const corseInLinea = new Set(
+      (attivitaList ?? [])
+        .filter((a) => a.tipoAttivita.toLowerCase() === "corsa in linea")
+        .map((a) => a.idCorsa)
+        .filter(Boolean)
+    );
+    const tutte = buildCorseInfoFromTransiti(transitiList);
+    return tutte.filter((c) => !corseInLinea.has(c.idCorsa));
+  }, [transitiList, attivitaList]);
 
   const handleSvuota = () => {
     if (confirm("Sei sicuro di voler eliminare tutti i dati (nastri e transiti)? Questa azione è irreversibile.")) {
@@ -248,6 +353,27 @@ export default function Dashboard() {
                     </Badge>
                   )}
                 </Button>
+
+                {transitiList && transitiList.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowCorseNonAssegnate(true)}
+                    className="gap-1.5 text-foreground border-border"
+                    data-testid="button-corse-non-assegnate"
+                  >
+                    <ListFilter className="w-4 h-4" />
+                    Corse non assegnate
+                    {corseNonAssegnate.length > 0 && (
+                      <Badge
+                        variant="secondary"
+                        className="h-4 min-w-4 px-1 text-[10px] font-bold rounded-full"
+                      >
+                        {corseNonAssegnate.length}
+                      </Badge>
+                    )}
+                  </Button>
+                )}
 
                 {snapshotInfo?.hasSnapshot && (
                   <Button
@@ -365,6 +491,13 @@ export default function Dashboard() {
         open={showCronologia}
         onClose={() => setShowCronologia(false)}
         entries={mergeLogEntries ?? []}
+      />
+
+      {/* Corse non assegnate dialog */}
+      <CorseNonAssegnateDialog
+        open={showCorseNonAssegnate}
+        onClose={() => setShowCorseNonAssegnate(false)}
+        corseNonAssegnate={corseNonAssegnate}
       />
     </div>
   );
