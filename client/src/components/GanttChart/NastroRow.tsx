@@ -51,6 +51,18 @@ interface SostaEmbeddingSuggestion {
   fitMarginMins: number;
 }
 
+// Current nastro IS the host: guest candidates that fit in one of its soste
+interface SostaHostSuggestion {
+  guestNastroId: string;
+  sostaId: number;
+  sostaLocation: string;
+  sostaStart: string;
+  sostaEnd: string;
+  sostaDurationMins: number;
+  guestEffectiveDurationMins: number;
+  fitMarginMins: number;
+}
+
 function parseDurataMassima(value: string): number | null {
   if (!value.trim()) return null;
   if (value.includes(":")) {
@@ -355,6 +367,67 @@ export function NastroRow({
     return results.sort((a, b) => b.fitMarginMins - a.fitMarginMins);
   }, [allNastriMap, nastroId, sorted, first, last]);
 
+  // ---- Sosta host suggestions ----
+  // Current nastro IS the host: finds other nastri (guests) that can be inserted in its soste.
+  const sostaHostSuggestions = useMemo<SostaHostSuggestion[]>(() => {
+    if (!allNastriMap || !first || !last) return [];
+
+    const toleranceMins = 15;
+    const results: SostaHostSuggestion[] = [];
+
+    // For each sosta in the current nastro
+    sorted.forEach(act => {
+      if (act.tipoAttivita.toLowerCase() !== "sosta") return;
+
+      const sostaStartMins = isoToMinutes(act.orarioInizio);
+      const sostaEndMins = isoToMinutes(act.orarioFine);
+      const sostaDurationMins = sostaEndMins - sostaStartMins;
+
+      // Find guest nastri that can be inserted in this sosta
+      allNastriMap.forEach((candidateActivities, candidateId) => {
+        if (candidateId === nastroId) return;
+
+        const sortedCandidate = [...candidateActivities].sort(
+          (a, b) => new Date(a.orarioInizio).getTime() - new Date(b.orarioInizio).getTime()
+        );
+
+        const firstCorsa = sortedCandidate.find(a => a.tipoAttivita.toLowerCase() === "corsa in linea");
+        const lastCorsa = [...sortedCandidate].reverse().find(a => a.tipoAttivita.toLowerCase() === "corsa in linea");
+        if (!firstCorsa || !lastCorsa) return;
+
+        // Guest must be circular at the same location as the sosta
+        if (firstCorsa.idOrigine !== act.idOrigine) return;
+        if (lastCorsa.idDestinazione !== firstCorsa.idOrigine) return;
+
+        const guestStartMins = isoToMinutes(firstCorsa.orarioInizio);
+        const guestEndMins = isoToMinutes(lastCorsa.orarioFine);
+        const guestDurationMins = guestEndMins - guestStartMins;
+
+        if (sostaDurationMins < guestDurationMins - toleranceMins) return;
+
+        // Guest's first corsa must start within the sosta window
+        if (guestStartMins < sostaStartMins) return;
+        if (guestStartMins > sostaEndMins) return;
+
+        const fitMarginMins = sostaEndMins - guestEndMins;
+        if (fitMarginMins < -toleranceMins) return;
+
+        results.push({
+          guestNastroId: candidateId,
+          sostaId: act.id,
+          sostaLocation: act.idOrigine,
+          sostaStart: act.orarioInizio,
+          sostaEnd: act.orarioFine,
+          sostaDurationMins,
+          guestEffectiveDurationMins: guestDurationMins,
+          fitMarginMins,
+        });
+      });
+    });
+
+    return results.sort((a, b) => b.fitMarginMins - a.fitMarginMins);
+  }, [allNastriMap, nastroId, sorted, first, last]);
+
   // ---- DnD ----
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id: `nastro-${nastroId}`,
@@ -392,6 +465,18 @@ export function NastroRow({
       insertInSosta({
         hostNastroId: sug.hostNastroId,
         guestNastroId: nastroId,
+        sostaId: sug.sostaId,
+      });
+      setPopoverOpen(false);
+    }
+  };
+
+  const handleInsertGuestInSosta = (sug: SostaHostSuggestion) => {
+    const label = `Inserire "${sug.guestNastroId}" nella sosta di "${nastroId}" (${sug.sostaLocation}, ${formatMinutes(sug.sostaDurationMins)})?\n\nI tempi accessori del nastro ospite verranno rimossi per fare spazio.`;
+    if (confirm(label)) {
+      insertInSosta({
+        hostNastroId: nastroId,
+        guestNastroId: sug.guestNastroId,
         sostaId: sug.sostaId,
       });
       setPopoverOpen(false);
@@ -488,14 +573,14 @@ export function NastroRow({
               <button
                 className={`
                   p-1 rounded transition-colors shrink-0
-                  ${(suggestions.length > 0 || sostaEmbeddingSuggestions.length > 0)
+                  ${(suggestions.length > 0 || sostaEmbeddingSuggestions.length > 0 || sostaHostSuggestions.length > 0)
                     ? "text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
                     : "text-muted-foreground/30 hover:text-muted-foreground hover:bg-muted/50"
                   }
                 `}
                 title={
-                  (suggestions.length + sostaEmbeddingSuggestions.length) > 0
-                    ? `${suggestions.length} merge · ${sostaEmbeddingSuggestions.length} in sosta`
+                  (suggestions.length + sostaEmbeddingSuggestions.length + sostaHostSuggestions.length) > 0
+                    ? `${suggestions.length} merge · ${sostaEmbeddingSuggestions.length} da inserire · ${sostaHostSuggestions.length} da ospitare`
                     : "Nessun suggerimento disponibile"
                 }
                 data-testid={`button-suggest-merge-${nastroId}`}
@@ -636,6 +721,63 @@ export function NastroRow({
                         >
                           <LogIn className="w-3 h-3 mr-1" />
                           Inserisci
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Sosta host suggestions: nastri da ospitare in una sosta di questo nastro */}
+              {sostaHostSuggestions.length > 0 && (
+                <>
+                  <div className="px-4 py-2 border-t border-border bg-muted/30">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                      <LogIn className="w-3 h-3 rotate-180" />
+                      Nastri da ospitare in sosta
+                    </p>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto divide-y divide-border">
+                    {sostaHostSuggestions.map((sug) => (
+                      <div
+                        key={`${sug.guestNastroId}-${sug.sostaId}`}
+                        className="flex items-start gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-semibold">{sug.guestNastroId}</span>
+                            <div
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: stringToColor(sug.sostaLocation) }}
+                            />
+                            <span className="text-xs text-muted-foreground truncate">{sug.sostaLocation}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-0.5">
+                              <Clock className="w-3 h-3" />
+                              sosta {formatMinutes(sug.sostaDurationMins)} · ospite {formatMinutes(sug.guestEffectiveDurationMins)}
+                            </span>
+                            {sug.fitMarginMins >= 0 ? (
+                              <span className="text-green-600 dark:text-green-400">
+                                +{Math.round(sug.fitMarginMins)}m margine
+                              </span>
+                            ) : (
+                              <span className="text-orange-500">
+                                {Math.round(Math.abs(sug.fitMarginMins))}m sovrapposizione
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 h-7 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-950"
+                          disabled={isInserting}
+                          onClick={() => handleInsertGuestInSosta(sug)}
+                          data-testid={`button-host-sosta-${nastroId}-${sug.guestNastroId}`}
+                        >
+                          <LogIn className="w-3 h-3 mr-1" />
+                          Ospita
                         </Button>
                       </div>
                     ))}

@@ -103,6 +103,17 @@ export function AttivitaItem({ attivita }: AttivitaItemProps) {
           </div>
           <div className="text-xs mt-1">
             {formatTime(attivita.orarioInizio)} → {formatTime(attivita.orarioFine)}
+            {" "}
+            <span className="opacity-70">
+              ({(() => {
+                const diffMins = Math.round(
+                  (new Date(attivita.orarioFine).getTime() - new Date(attivita.orarioInizio).getTime()) / 60000
+                );
+                const h = Math.floor(diffMins / 60);
+                const m = diffMins % 60;
+                return h > 0 ? `${h}h ${m}m` : `${m}m`;
+              })()})
+            </span>
           </div>
           <div className="text-xs mt-1">
             {attivita.idOrigine} → {attivita.idDestinazione}
