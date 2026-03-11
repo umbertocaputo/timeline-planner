@@ -36,6 +36,15 @@ export interface IStorage {
     }
   ): Promise<boolean>;
   insertNastroInSosta(hostNastroId: string, guestNastroId: string, sostaId: number): Promise<boolean>;
+  insertCorsa(
+    nastroId: string,
+    corsa: { idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string },
+    spostamentoPre: { idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string } | null,
+    spostamentoPost: { idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string } | null,
+    deleteIds: number[],
+    newLeadingTA: { idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string } | null,
+    newTrailingTA: { idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string } | null,
+  ): Promise<boolean>;
   clearAllAttivita(): Promise<void>;
   // Snapshot
   snapshotAttivita(attivitaList: InsertAttivita[]): Promise<void>;
@@ -261,6 +270,68 @@ export class DatabaseStorage implements IStorage {
       eseguiteAlle: new Date().toISOString(),
     });
 
+    return true;
+  }
+
+  async insertCorsa(
+    nastroId: string,
+    corsa: { idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string },
+    spostamentoPre: { idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string } | null,
+    spostamentoPost: { idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string } | null,
+    deleteIds: number[],
+    newLeadingTA: { idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string } | null,
+    newTrailingTA: { idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string } | null,
+  ): Promise<boolean> {
+    if (deleteIds.length > 0) {
+      await db.delete(attivita).where(inArray(attivita.id, deleteIds));
+    }
+    if (newLeadingTA) {
+      await db.insert(attivita).values({
+        nastroId,
+        tipoAttivita: "tempo accessorio",
+        isBridgeCorsa: false,
+        idCorsa: null,
+        ...newLeadingTA,
+      });
+    }
+    if (spostamentoPre) {
+      await db.insert(attivita).values({
+        nastroId,
+        tipoAttivita: "corsa di spostamento",
+        isBridgeCorsa: false,
+        ...spostamentoPre,
+      });
+    }
+    await db.insert(attivita).values({
+      nastroId,
+      tipoAttivita: "corsa in linea",
+      isBridgeCorsa: false,
+      ...corsa,
+    });
+    if (spostamentoPost) {
+      await db.insert(attivita).values({
+        nastroId,
+        tipoAttivita: "corsa di spostamento",
+        isBridgeCorsa: false,
+        ...spostamentoPost,
+      });
+    }
+    if (newTrailingTA) {
+      await db.insert(attivita).values({
+        nastroId,
+        tipoAttivita: "tempo accessorio",
+        isBridgeCorsa: false,
+        idCorsa: null,
+        ...newTrailingTA,
+      });
+    }
+    await db.insert(mergeLog).values({
+      tipoOperazione: "insert-corsa",
+      targetNastroId: nastroId,
+      sourceNastroId: corsa.idCorsa,
+      bridgeCorsaId: corsa.idCorsa,
+      eseguiteAlle: new Date().toISOString(),
+    });
     return true;
   }
 

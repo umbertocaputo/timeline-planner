@@ -4,6 +4,17 @@ import { useToast } from "@/hooks/use-toast";
 
 type MoveAttivitaInput = { attivitaId: number; fromNastroId: string; toNastroId: string };
 type InsertSpostamentoInput = { nastroId: string; idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string };
+type SpostamentoInfo = { idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string };
+type TAInfo = { idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string };
+export type InsertCorsaInput = {
+  nastroId: string;
+  corsa: SpostamentoInfo;
+  spostamentoPre?: SpostamentoInfo;
+  spostamentoPost?: SpostamentoInfo;
+  deleteIds: number[];
+  newLeadingTA?: TAInfo;
+  newTrailingTA?: TAInfo;
+};
 
 export function useAttivita() {
   return useQuery({
@@ -293,5 +304,34 @@ export function useResetToSnapshot() {
     onError: (error) => {
       toast({ title: "Ripristino fallito", description: (error as Error).message, variant: "destructive" });
     }
+  });
+}
+
+export function useInsertCorsa() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (input: InsertCorsaInput) => {
+      const res = await fetch(api.attivita.insertCorsa.path, {
+        method: api.attivita.insertCorsa.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message || "Inserimento fallito");
+      }
+      return api.attivita.insertCorsa.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.mergeLog.list.path] });
+      toast({ title: "Corsa inserita", description: "La corsa è stata aggiunta al nastro selezionato." });
+    },
+    onError: (error) => {
+      toast({ title: "Inserimento fallito", description: (error as Error).message, variant: "destructive" });
+    },
   });
 }

@@ -118,6 +118,50 @@ export const api = {
         200: z.object({ success: z.boolean() }),
       },
     },
+    insertCorsa: {
+      method: 'POST' as const,
+      path: '/api/nastri/insert-corsa' as const,
+      input: z.object({
+        nastroId: z.string(),
+        corsa: z.object({
+          idCorsa: z.string(),
+          idOrigine: z.string(),
+          idDestinazione: z.string(),
+          orarioInizio: z.string(),
+          orarioFine: z.string(),
+        }),
+        spostamentoPre: z.object({
+          idCorsa: z.string(),
+          idOrigine: z.string(),
+          idDestinazione: z.string(),
+          orarioInizio: z.string(),
+          orarioFine: z.string(),
+        }).optional(),
+        spostamentoPost: z.object({
+          idCorsa: z.string(),
+          idOrigine: z.string(),
+          idDestinazione: z.string(),
+          orarioInizio: z.string(),
+          orarioFine: z.string(),
+        }).optional(),
+        deleteIds: z.array(z.number()),
+        newLeadingTA: z.object({
+          idOrigine: z.string(),
+          idDestinazione: z.string(),
+          orarioInizio: z.string(),
+          orarioFine: z.string(),
+        }).optional(),
+        newTrailingTA: z.object({
+          idOrigine: z.string(),
+          idDestinazione: z.string(),
+          orarioInizio: z.string(),
+          orarioFine: z.string(),
+        }).optional(),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean() }),
+      },
+    },
     clearAll: {
       method: 'DELETE' as const,
       path: '/api/attivita' as const,

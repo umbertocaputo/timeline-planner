@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
-import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight, MoveRight, Bus, ListFilter } from "lucide-react";
+import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight, MoveRight, Bus, ListFilter, PlusCircle, ChevronDown, ChevronUp, Shuffle } from "lucide-react";
 import { ExcelUploader } from "@/components/ExcelUploader";
 import { TransitiUploader } from "@/components/TransitiUploader";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
-import { useAttivita, useClearAllAttivita, useResetToSnapshot, useHasSnapshot, useMergeLogs } from "@/hooks/use-attivita";
+import { useAttivita, useClearAllAttivita, useResetToSnapshot, useHasSnapshot, useMergeLogs, useInsertCorsa, type InsertCorsaInput } from "@/hooks/use-attivita";
 import { useTransiti, useClearAllTransiti } from "@/hooks/use-transiti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { type MergeLogEntry, type Transito, type Attivita } from "@shared/schema";
+import { computeNastroSuggestions, type CorsaInfo as SuggCorsaInfo, type NastroSuggestion } from "@/lib/nastro-suggestions";
 
 function formatTimestamp(iso: string): string {
   try {
@@ -68,6 +69,10 @@ function MergeLogDialog({ open, onClose, entries }: { open: boolean; onClose: ()
                     <div className="w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-950 flex items-center justify-center">
                       <MoveRight className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                     </div>
+                  ) : entry.tipoOperazione === "insert-corsa" ? (
+                    <div className="w-7 h-7 rounded-full bg-teal-100 dark:bg-teal-950 flex items-center justify-center">
+                      <PlusCircle className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                    </div>
                   ) : (
                     <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
                       <LogIn className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
@@ -86,7 +91,9 @@ function MergeLogDialog({ open, onClose, entries }: { open: boolean; onClose: ()
                             ? "border-green-200 text-green-700 dark:border-green-800 dark:text-green-400 text-[10px]"
                             : entry.tipoOperazione === "move-attivita"
                               ? "border-purple-200 text-purple-700 dark:border-purple-800 dark:text-purple-400 text-[10px]"
-                              : "border-blue-200 text-blue-700 dark:border-blue-800 dark:text-blue-400 text-[10px]"
+                              : entry.tipoOperazione === "insert-corsa"
+                                ? "border-teal-200 text-teal-700 dark:border-teal-800 dark:text-teal-400 text-[10px]"
+                                : "border-blue-200 text-blue-700 dark:border-blue-800 dark:text-blue-400 text-[10px]"
                       }
                     >
                       {entry.tipoOperazione === "merge"
@@ -95,12 +102,20 @@ function MergeLogDialog({ open, onClose, entries }: { open: boolean; onClose: ()
                           ? "Spostamento"
                           : entry.tipoOperazione === "move-attivita"
                             ? "Corsa spostata"
-                            : "In sosta"}
+                            : entry.tipoOperazione === "insert-corsa"
+                              ? "Inserimento"
+                              : "In sosta"}
                     </Badge>
                     {entry.tipoOperazione === "insert-spostamento" ? (
                       <span className="text-sm font-semibold">
                         Nastro {entry.targetNastroId} · corsa {entry.bridgeCorsaId}
                       </span>
+                    ) : entry.tipoOperazione === "insert-corsa" ? (
+                      <>
+                        <span className="text-sm font-semibold">Corsa {entry.sourceNastroId}</span>
+                        <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-semibold">Nastro {entry.targetNastroId}</span>
+                      </>
                     ) : entry.tipoOperazione === "move-attivita" ? (
                       <>
                         <span className="text-sm font-semibold">{entry.sourceNastroId}</span>
@@ -162,7 +177,7 @@ function buildCorseInfoFromTransiti(transitiList: Transito[]): CorsaInfo[] {
     byCorsa.get(t.idCorsa)!.push(t);
   }
   const result: CorsaInfo[] = [];
-  for (const [idCorsa, fermate] of byCorsa) {
+  for (const [idCorsa, fermate] of Array.from(byCorsa.entries())) {
     const sorted = [...fermate].sort((a, b) => a.sequenza - b.sequenza);
     const first = sorted[0];
     const last = sorted[sorted.length - 1];
@@ -177,18 +192,32 @@ function buildCorseInfoFromTransiti(transitiList: Transito[]): CorsaInfo[] {
   return result.sort((a, b) => a.orarioPartenza.localeCompare(b.orarioPartenza));
 }
 
+function formatDuration(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return `${h}h${String(m).padStart(2, "0")}m`;
+}
+
 function CorseNonAssegnateDialog({
   open,
   onClose,
   corseNonAssegnate,
+  corseSuggerimenti,
+  onInsert,
+  isInserting,
 }: {
   open: boolean;
   onClose: () => void;
   corseNonAssegnate: CorsaInfo[];
+  corseSuggerimenti: Map<string, NastroSuggestion[]>;
+  onInsert: (corsa: CorsaInfo, suggestion: NastroSuggestion) => void;
+  isInserting: boolean;
 }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ListFilter className="w-4 h-4" />
@@ -204,22 +233,88 @@ function CorseNonAssegnateDialog({
             Tutte le corse dei transiti sono già presenti nei nastri come corse in linea.
           </div>
         ) : (
-          <div className="max-h-96 overflow-y-auto divide-y divide-border -mx-6 px-6">
-            {corseNonAssegnate.map((corsa) => (
-              <div key={corsa.idCorsa} className="flex items-center gap-3 py-2.5" data-testid={`row-corsa-non-assegnata-${corsa.idCorsa}`}>
-                <span className="font-mono text-sm font-semibold w-20 shrink-0 text-foreground">
-                  {corsa.idCorsa}
-                </span>
-                <div className="flex items-center gap-1 text-xs text-muted-foreground flex-1 min-w-0">
-                  <span className="truncate max-w-[64px]">{corsa.idOrigine}</span>
-                  <ArrowRight className="w-3 h-3 shrink-0" />
-                  <span className="truncate max-w-[64px]">{corsa.idDestinazione}</span>
+          <div className="max-h-[70vh] overflow-y-auto divide-y divide-border -mx-6 px-6">
+            {corseNonAssegnate.map((corsa) => {
+              const suggestions = corseSuggerimenti.get(corsa.idCorsa) ?? [];
+              const isOpen = expanded === corsa.idCorsa;
+              return (
+                <div key={corsa.idCorsa} className="py-2.5" data-testid={`row-corsa-non-assegnata-${corsa.idCorsa}`}>
+                  {/* Corsa info row */}
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-sm font-semibold w-20 shrink-0 text-foreground">
+                      {corsa.idCorsa}
+                    </span>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground flex-1 min-w-0">
+                      <span className="truncate max-w-[72px]">{corsa.idOrigine}</span>
+                      <ArrowRight className="w-3 h-3 shrink-0" />
+                      <span className="truncate max-w-[72px]">{corsa.idDestinazione}</span>
+                    </div>
+                    <span className="font-mono text-xs text-muted-foreground shrink-0">
+                      {formatTimeFromIso(corsa.orarioPartenza)} – {formatTimeFromIso(corsa.orarioArrivo)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs gap-1 shrink-0"
+                      onClick={() => setExpanded(isOpen ? null : corsa.idCorsa)}
+                      data-testid={`button-espandi-suggerimenti-${corsa.idCorsa}`}
+                    >
+                      {suggestions.length > 0 ? (
+                        <>
+                          <span className="text-teal-600 dark:text-teal-400 font-medium">{suggestions.length}</span>
+                          {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground/60 text-[11px]">—</span>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Suggestions panel */}
+                  {isOpen && (
+                    <div className="mt-2 ml-20 space-y-1.5">
+                      {suggestions.length === 0 ? (
+                        <p className="text-xs text-muted-foreground italic">Nessun nastro disponibile con i parametri correnti.</p>
+                      ) : (
+                        suggestions.map((s) => (
+                          <div
+                            key={s.nastroId}
+                            className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1.5"
+                            data-testid={`row-suggerimento-${corsa.idCorsa}-${s.nastroId}`}
+                          >
+                            <span className="font-mono text-xs font-semibold text-foreground w-14 shrink-0">
+                              {s.nastroId}
+                            </span>
+                            <span className="text-xs text-muted-foreground flex-1">
+                              {formatDuration(s.newDurationMins)}
+                              {(s.spostamentoPre || s.spostamentoPost) && (
+                                <span className="ml-1.5 inline-flex items-center gap-0.5 text-violet-600 dark:text-violet-400">
+                                  <Shuffle className="w-2.5 h-2.5" />
+                                  spostamento
+                                </span>
+                              )}
+                              {(s.newLeadingTA || s.newTrailingTA) && (
+                                <span className="ml-1.5 text-orange-500 dark:text-orange-400 text-[10px]">T.A. aggiornati</span>
+                              )}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 px-2 text-xs border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-400 dark:hover:bg-teal-950 shrink-0"
+                              disabled={isInserting}
+                              onClick={() => onInsert(corsa, s)}
+                              data-testid={`button-inserisci-${corsa.idCorsa}-${s.nastroId}`}
+                            >
+                              Inserisci
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
-                <span className="font-mono text-xs text-muted-foreground shrink-0">
-                  {formatTimeFromIso(corsa.orarioPartenza)} – {formatTimeFromIso(corsa.orarioArrivo)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </DialogContent>
@@ -244,6 +339,7 @@ export default function Dashboard() {
   const { mutate: clearAttivita, isPending: isClearingAttivita } = useClearAllAttivita();
   const { mutate: clearTransiti, isPending: isClearingTransiti } = useClearAllTransiti();
   const { mutate: resetToSnapshot, isPending: isResetting } = useResetToSnapshot();
+  const { mutate: insertCorsa, isPending: isInsertingCorsa } = useInsertCorsa();
 
   const isClearing = isClearingAttivita || isClearingTransiti;
   const mergeCount = mergeLogEntries?.length ?? 0;
@@ -259,6 +355,99 @@ export default function Dashboard() {
     const tutte = buildCorseInfoFromTransiti(transitiList);
     return tutte.filter((c) => !corseInLinea.has(c.idCorsa));
   }, [transitiList, attivitaList]);
+
+  // Build lookup maps for the suggestion algorithm
+  const allNastriMap = useMemo(() => {
+    const map = new Map<string, Attivita[]>();
+    (attivitaList ?? []).forEach((a) => {
+      const existing = map.get(a.nastroId) ?? [];
+      existing.push(a);
+      map.set(a.nastroId, existing);
+    });
+    return map;
+  }, [attivitaList]);
+
+  const transitiByCorsa = useMemo(() => {
+    const map = new Map<string, Transito[]>();
+    (transitiList ?? []).forEach((t) => {
+      const existing = map.get(t.idCorsa) ?? [];
+      existing.push(t);
+      map.set(t.idCorsa, existing);
+    });
+    return map;
+  }, [transitiList]);
+
+  const parsedPausaCorse = useMemo(() => {
+    if (!pausaCorse) return 0;
+    const [h, m] = pausaCorse.split(":").map(Number);
+    return (h || 0) * 60 + (m || 0);
+  }, [pausaCorse]);
+
+  const parsedPausaSpostamenti = useMemo(() => {
+    if (!pausaSpostamenti) return 0;
+    const [h, m] = pausaSpostamenti.split(":").map(Number);
+    return (h || 0) * 60 + (m || 0);
+  }, [pausaSpostamenti]);
+
+  const durataMassimaMinutes = useMemo(() => {
+    if (!durataMassima) return null;
+    const [h, m] = durataMassima.split(":").map(Number);
+    return (h || 0) * 60 + (m || 0);
+  }, [durataMassima]);
+
+  // Compute nastro suggestions for each unassigned corsa
+  const corseSuggerimenti = useMemo(() => {
+    const map = new Map<string, NastroSuggestion[]>();
+    if (allNastriMap.size === 0) return map;
+    for (const corsa of corseNonAssegnate) {
+      const suggestions = computeNastroSuggestions(
+        corsa as SuggCorsaInfo,
+        allNastriMap,
+        transitiByCorsa,
+        parsedPausaCorse,
+        parsedPausaSpostamenti,
+        durataMassimaMinutes,
+      );
+      map.set(corsa.idCorsa, suggestions.slice(0, 5));
+    }
+    return map;
+  }, [corseNonAssegnate, allNastriMap, transitiByCorsa, parsedPausaCorse, parsedPausaSpostamenti, durataMassimaMinutes]);
+
+  const handleInsertCorsa = (corsa: CorsaInfo, suggestion: NastroSuggestion) => {
+    const refIso = allNastriMap.get(suggestion.nastroId)?.[0]?.orarioInizio;
+    if (!refIso) return;
+
+    const normalizeDate = (iso: string) => {
+      if (!iso || iso.length < 11) return iso;
+      const refDate = new Date(refIso);
+      const yyyy = refDate.getUTCFullYear();
+      const mm = String(refDate.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(refDate.getUTCDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}T${iso.slice(11)}`;
+    };
+
+    const stops = (transitiByCorsa.get(corsa.idCorsa) ?? []).sort(
+      (a, b) => a.sequenza - b.sequenza,
+    );
+    const firstStop = stops[0];
+    const lastStop = stops[stops.length - 1];
+
+    insertCorsa({
+      nastroId: suggestion.nastroId,
+      corsa: {
+        idCorsa: corsa.idCorsa,
+        idOrigine: corsa.idOrigine,
+        idDestinazione: corsa.idDestinazione,
+        orarioInizio: normalizeDate(firstStop?.orarioPartenza ?? corsa.orarioPartenza),
+        orarioFine: normalizeDate(lastStop?.orarioArrivo ?? corsa.orarioArrivo),
+      },
+      spostamentoPre: suggestion.spostamentoPre,
+      spostamentoPost: suggestion.spostamentoPost,
+      deleteIds: suggestion.deleteIds,
+      newLeadingTA: suggestion.newLeadingTA,
+      newTrailingTA: suggestion.newTrailingTA,
+    });
+  };
 
   const handleSvuota = () => {
     if (confirm("Sei sicuro di voler eliminare tutti i dati (nastri e transiti)? Questa azione è irreversibile.")) {
@@ -498,6 +687,9 @@ export default function Dashboard() {
         open={showCorseNonAssegnate}
         onClose={() => setShowCorseNonAssegnate(false)}
         corseNonAssegnate={corseNonAssegnate}
+        corseSuggerimenti={corseSuggerimenti}
+        onInsert={handleInsertCorsa}
+        isInserting={isInsertingCorsa}
       />
     </div>
   );

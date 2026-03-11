@@ -120,7 +120,7 @@ function findBridgeCorsa(
   const minDepartureMinutes = isoToMinutes(new Date(minDepartureMs).toISOString());
   const maxArrivalMinutes = isoToMinutes(new Date(maxArrivalMs).toISOString());
 
-  for (const [idCorsa, stops] of transitiByCorsa) {
+  for (const [idCorsa, stops] of Array.from(transitiByCorsa.entries())) {
     const sorted = [...stops].sort((a, b) => a.sequenza - b.sequenza);
 
     const fromStopIdx = sorted.findIndex(

@@ -127,6 +127,28 @@ export async function registerRoutes(
     }
   });
 
+  // Insert an unassigned corsa into a nastro (with optional spostamenti and TA rebuild)
+  app.post(api.attivita.insertCorsa.path, async (req, res) => {
+    try {
+      const input = api.attivita.insertCorsa.input.parse(req.body);
+      await storage.insertCorsa(
+        input.nastroId,
+        input.corsa,
+        input.spostamentoPre ?? null,
+        input.spostamentoPost ?? null,
+        input.deleteIds,
+        input.newLeadingTA ?? null,
+        input.newTrailingTA ?? null,
+      );
+      res.status(200).json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      throw err;
+    }
+  });
+
   app.delete(api.attivita.clearAll.path, async (req, res) => {
     try {
       await storage.clearAllAttivita();
