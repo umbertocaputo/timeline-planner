@@ -33,6 +33,20 @@ export const attivitaSnapshot = pgTable("attivita_snapshot", {
   isBridgeCorsa: boolean("is_bridge_corsa").default(false),
 });
 
+// Log of all merge/insert-in-sosta operations since the last Ripristina
+export const mergeLog = pgTable("merge_log", {
+  id: serial("id").primaryKey(),
+  tipoOperazione: text("tipo_operazione").notNull(), // "merge" | "insert-in-sosta"
+  targetNastroId: text("target_nastro_id").notNull(),
+  sourceNastroId: text("source_nastro_id").notNull(),
+  bridgeCorsaId: text("bridge_corsa_id"),
+  eseguiteAlle: text("eseguite_alle").notNull(), // ISO timestamp
+});
+
+export const insertMergeLogSchema = createInsertSchema(mergeLog).omit({ id: true });
+export type MergeLogEntry = typeof mergeLog.$inferSelect;
+export type InsertMergeLogEntry = z.infer<typeof insertMergeLogSchema>;
+
 // Transiti (transit stops for each corsa)
 export const transiti = pgTable("transiti", {
   id: serial("id").primaryKey(),

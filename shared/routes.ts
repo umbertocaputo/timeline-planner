@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertAttivitaSchema, attivita, insertTransitoSchema, transiti } from './schema';
+import { insertAttivitaSchema, attivita, insertTransitoSchema, transiti, mergeLog } from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -110,6 +110,15 @@ export const api = {
       path: '/api/attivita/has-snapshot' as const,
       responses: {
         200: z.object({ hasSnapshot: z.boolean() }),
+      },
+    },
+  },
+  mergeLog: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/merge-log' as const,
+      responses: {
+        200: z.array(z.custom<typeof mergeLog.$inferSelect>()),
       },
     },
   },

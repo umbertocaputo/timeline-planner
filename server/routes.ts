@@ -117,6 +117,12 @@ export async function registerRoutes(
     }
   });
 
+  // ---- Merge log ----
+  app.get(api.mergeLog.list.path, async (req, res) => {
+    const data = await storage.getMergeLog();
+    res.json(data);
+  });
+
   // ---- Transiti ----
   app.get(api.transiti.list.path, async (req, res) => {
     const data = await storage.getTransitiList();

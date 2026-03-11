@@ -1,14 +1,107 @@
 import { useState } from "react";
-import { CalendarDays, Trash2, RotateCcw } from "lucide-react";
+import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight } from "lucide-react";
 import { ExcelUploader } from "@/components/ExcelUploader";
 import { TransitiUploader } from "@/components/TransitiUploader";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
-import { useAttivita, useClearAllAttivita, useResetToSnapshot, useHasSnapshot } from "@/hooks/use-attivita";
+import { useAttivita, useClearAllAttivita, useResetToSnapshot, useHasSnapshot, useMergeLogs } from "@/hooks/use-attivita";
 import { useTransiti, useClearAllTransiti } from "@/hooks/use-transiti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { type MergeLogEntry } from "@shared/schema";
+
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("it-IT", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function MergeLogDialog({ open, onClose, entries }: { open: boolean; onClose: () => void; entries: MergeLogEntry[] }) {
+  const sorted = [...entries].sort(
+    (a, b) => new Date(b.eseguiteAlle).getTime() - new Date(a.eseguiteAlle).getTime()
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="w-4 h-4" />
+            Cronologia operazioni
+          </DialogTitle>
+        </DialogHeader>
+
+        {sorted.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            Nessuna operazione effettuata dall'ultimo ripristino.
+          </div>
+        ) : (
+          <div className="max-h-96 overflow-y-auto divide-y divide-border -mx-6 px-6">
+            {sorted.map((entry) => (
+              <div key={entry.id} className="flex items-start gap-3 py-3">
+                <div className="mt-0.5 shrink-0">
+                  {entry.tipoOperazione === "merge" ? (
+                    <div className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
+                      <Merge className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
+                      <LogIn className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge
+                      variant="outline"
+                      className={
+                        entry.tipoOperazione === "merge"
+                          ? "border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-400 text-[10px]"
+                          : "border-blue-200 text-blue-700 dark:border-blue-800 dark:text-blue-400 text-[10px]"
+                      }
+                    >
+                      {entry.tipoOperazione === "merge" ? "Merge" : "In sosta"}
+                    </Badge>
+                    <span className="text-sm font-semibold">{entry.sourceNastroId}</span>
+                    <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <span className="text-sm font-semibold">{entry.targetNastroId}</span>
+                  </div>
+
+                  {entry.bridgeCorsaId && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Corsa ponte: {entry.bridgeCorsaId}
+                    </p>
+                  )}
+
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatTimestamp(entry.eseguiteAlle)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function Dashboard() {
   const [sortBy, setSortBy] = useState<"name" | "start-time">("name");
@@ -17,14 +110,18 @@ export default function Dashboard() {
   const [durataMassima, setDurataMassima] = useState("");
   const [pausaCorse, setPausaCorse] = useState("");
   const [pausaSpostamenti, setPausaSpostamenti] = useState("");
+  const [showCronologia, setShowCronologia] = useState(false);
+
   const { data: attivitaList, isLoading } = useAttivita();
   const { data: transitiList } = useTransiti();
   const { data: snapshotInfo } = useHasSnapshot();
+  const { data: mergeLogEntries } = useMergeLogs();
   const { mutate: clearAttivita, isPending: isClearingAttivita } = useClearAllAttivita();
   const { mutate: clearTransiti, isPending: isClearingTransiti } = useClearAllTransiti();
   const { mutate: resetToSnapshot, isPending: isResetting } = useResetToSnapshot();
 
   const isClearing = isClearingAttivita || isClearingTransiti;
+  const mergeCount = mergeLogEntries?.length ?? 0;
 
   const handleSvuota = () => {
     if (confirm("Sei sicuro di voler eliminare tutti i dati (nastri e transiti)? Questa azione è irreversibile.")) {
@@ -99,6 +196,26 @@ export default function Dashboard() {
                 >
                   {hideTempoAccessorio ? "Mostra" : "Nascondi"} T.A.
                 </Button>
+
+                {mergeCount > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowCronologia(true)}
+                    className="text-foreground border-border gap-1.5"
+                    data-testid="button-cronologia"
+                  >
+                    <History className="w-4 h-4" />
+                    Cronologia
+                    <Badge
+                      variant="secondary"
+                      className="h-4 min-w-4 px-1 text-[10px] font-bold rounded-full"
+                    >
+                      {mergeCount}
+                    </Badge>
+                  </Button>
+                )}
+
                 {snapshotInfo?.hasSnapshot && (
                   <Button
                     variant="outline"
@@ -209,6 +326,13 @@ export default function Dashboard() {
           />
         )}
       </main>
+
+      {/* Cronologia dialog */}
+      <MergeLogDialog
+        open={showCronologia}
+        onClose={() => setShowCronologia(false)}
+        entries={mergeLogEntries ?? []}
+      />
     </div>
   );
 }

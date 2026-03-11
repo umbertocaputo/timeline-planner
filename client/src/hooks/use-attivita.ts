@@ -24,6 +24,17 @@ export function useHasSnapshot() {
   });
 }
 
+export function useMergeLogs() {
+  return useQuery({
+    queryKey: [api.mergeLog.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.mergeLog.list.path, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch merge log");
+      return api.mergeLog.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
 export function useBulkCreateAttivita() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -45,6 +56,7 @@ export function useBulkCreateAttivita() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.attivita.hasSnapshot.path] });
+      queryClient.invalidateQueries({ queryKey: [api.mergeLog.list.path] });
       toast({ title: "Import avvenuto con successo", description: "Dati caricati nella timeline." });
     },
     onError: (error) => {
@@ -143,6 +155,7 @@ export function useMergeNastro() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.mergeLog.list.path] });
       toast({ title: "Merge completato", description: "Nastri uniti, tempi accessori rimossi." });
     },
     onError: (error) => {
@@ -171,6 +184,7 @@ export function useInsertInSosta() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.mergeLog.list.path] });
       toast({ title: "Inserimento completato", description: "Nastro inserito nella sosta, tempi accessori rimossi." });
     },
     onError: (error) => {
@@ -212,6 +226,7 @@ export function useResetToSnapshot() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.mergeLog.list.path] });
       toast({ title: "Soluzione ripristinata", description: "I dati sono stati riportati all'upload originale." });
     },
     onError: (error) => {

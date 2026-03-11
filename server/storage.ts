@@ -2,12 +2,14 @@ import { db } from "./db";
 import {
   attivita,
   attivitaSnapshot,
+  mergeLog,
   transiti,
   type Attivita,
   type InsertAttivita,
   type UpdateAttivitaRequest,
   type Transito,
   type InsertTransito,
+  type MergeLogEntry,
 } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 
@@ -37,6 +39,9 @@ export interface IStorage {
   snapshotAttivita(attivitaList: InsertAttivita[]): Promise<void>;
   resetToSnapshot(): Promise<Attivita[]>;
   hasSnapshot(): Promise<boolean>;
+  // Merge log
+  getMergeLog(): Promise<MergeLogEntry[]>;
+  clearMergeLog(): Promise<void>;
   // Transiti
   getTransitiList(): Promise<Transito[]>;
   bulkCreateTransiti(transitiList: InsertTransito[]): Promise<Transito[]>;
@@ -65,6 +70,8 @@ export class DatabaseStorage implements IStorage {
     const inserted = await db.insert(attivita).values(attivitaList).returning();
     // Automatically take a snapshot of the fresh import
     await this.snapshotAttivita(attivitaList);
+    // Reset merge log on new upload
+    await this.clearMergeLog();
     return inserted;
   }
 
@@ -153,6 +160,15 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
+    // Log this merge operation
+    await db.insert(mergeLog).values({
+      tipoOperazione: "merge",
+      targetNastroId,
+      sourceNastroId,
+      bridgeCorsaId: bridgeCorsa?.idCorsa ?? null,
+      eseguiteAlle: new Date().toISOString(),
+    });
+
     return true;
   }
 
@@ -198,6 +214,15 @@ export class DatabaseStorage implements IStorage {
       .set({ nastroId: hostNastroId })
       .where(eq(attivita.nastroId, guestNastroId));
 
+    // Log this operation
+    await db.insert(mergeLog).values({
+      tipoOperazione: "insert-in-sosta",
+      targetNastroId: hostNastroId,
+      sourceNastroId: guestNastroId,
+      bridgeCorsaId: null,
+      eseguiteAlle: new Date().toISOString(),
+    });
+
     return true;
   }
 
@@ -220,12 +245,23 @@ export class DatabaseStorage implements IStorage {
     await db.delete(attivita);
     const toInsert = snapshot.map(({ id: _id, ...rest }) => rest);
     const inserted = await db.insert(attivita).values(toInsert).returning();
+    // Clear merge log on restore
+    await this.clearMergeLog();
     return inserted;
   }
 
   async hasSnapshot(): Promise<boolean> {
     const [row] = await db.select().from(attivitaSnapshot).limit(1);
     return !!row;
+  }
+
+  // Merge log methods
+  async getMergeLog(): Promise<MergeLogEntry[]> {
+    return await db.select().from(mergeLog);
+  }
+
+  async clearMergeLog(): Promise<void> {
+    await db.delete(mergeLog);
   }
 
   // Transiti
@@ -235,6 +271,7 @@ export class DatabaseStorage implements IStorage {
 
   async bulkCreateTransiti(transitiList: InsertTransito[]): Promise<Transito[]> {
     if (transitiList.length === 0) return [];
+    await db.delete(transiti);
     return await db.insert(transiti).values(transitiList).returning();
   }
 
