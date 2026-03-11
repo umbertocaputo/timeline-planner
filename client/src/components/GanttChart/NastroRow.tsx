@@ -19,6 +19,7 @@ interface NastroRowProps {
   allNastriMap?: Map<string, Attivita[]>;
   transitiByCorsa?: Map<string, Transito[]>;
   durataMassima?: string;
+  pausaCorse?: string;
   pausaSpostamenti?: string;
 }
 
@@ -105,6 +106,7 @@ export function NastroRow({
   allNastriMap,
   transitiByCorsa = new Map(),
   durataMassima = "",
+  pausaCorse = "",
   pausaSpostamenti = "",
 }: NastroRowProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -138,9 +140,16 @@ export function NastroRow({
     if (!allNastriMap || !last || !first) return [];
 
     const durataMassimaMinutes = parseDurataMassima(durataMassima);
-    // Pausa spostamenti used only for bridge corsa window
+    // Pausa tra corse: minimum gap between last corsa of current and first corsa of candidate (same location)
+    const pausaCorseMinutes = pausaCorse.trim() ? parseInt(pausaCorse) || 0 : 0;
+    // Pausa spostamenti: margin used for bridge corsa departure/arrival window
     const pausaSpostaMinutes = pausaSpostamenti.trim() ? parseInt(pausaSpostamenti) || 10 : 10;
     const pausaSpostaMs = pausaSpostaMinutes * 60000;
+
+    // Last "corsa in linea" in current nastro
+    const lastCorsaAttuale = [...sorted]
+      .reverse()
+      .find((a) => a.tipoAttivita.toLowerCase() === "corsa in linea");
 
     const endTime = new Date(last.orarioFine).getTime();
     const endLoc = last.idDestinazione;
@@ -172,9 +181,16 @@ export function NastroRow({
       let bridgeCorsa: BridgeCorsaInfo | undefined;
 
       if (candidateFirst.idOrigine === endLoc) {
-        // ---- Direct match (same location) — no pausa constraint ----
-        gapMins =
-          (new Date(candidateFirst.orarioInizio).getTime() - endTime) / 60000;
+        // ---- Direct match (same location) ----
+        // Apply pausaCorse: gap between last corsa of current and first corsa of candidate must be >= pausaCorseMinutes
+        if (pausaCorseMinutes > 0 && lastCorsaAttuale && firstCorsaCandidate) {
+          const corsaGapMins =
+            (new Date(firstCorsaCandidate.orarioInizio).getTime() -
+              new Date(lastCorsaAttuale.orarioFine).getTime()) /
+            60000;
+          if (corsaGapMins < pausaCorseMinutes) return;
+        }
+        gapMins = (new Date(candidateFirst.orarioInizio).getTime() - endTime) / 60000;
       } else {
         // ---- Bridge corsa needed — uses pausaSpostamenti ----
         if (transitiByCorsa.size === 0) return;
@@ -218,7 +234,7 @@ export function NastroRow({
     });
 
     return results.sort((a, b) => a.totalDurationMins - b.totalDurationMins);
-  }, [allNastriMap, nastroId, sorted, last, first, durataMassima, pausaSpostamenti, transitiByCorsa]);
+  }, [allNastriMap, nastroId, sorted, last, first, durataMassima, pausaCorse, pausaSpostamenti, transitiByCorsa]);
 
   // ---- DnD ----
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({

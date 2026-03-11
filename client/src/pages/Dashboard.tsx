@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [hideSosta, setHideSosta] = useState(false);
   const [hideTempoAccessorio, setHideTempoAccessorio] = useState(false);
   const [durataMassima, setDurataMassima] = useState("");
+  const [pausaCorse, setPausaCorse] = useState("");
   const [pausaSpostamenti, setPausaSpostamenti] = useState("");
   const { data: attivitaList, isLoading } = useAttivita();
   const { data: transitiList } = useTransiti();
@@ -127,6 +128,22 @@ export default function Dashboard() {
             </div>
             <div className="w-px h-4 bg-border" />
             <div className="flex items-center gap-2">
+              <Label htmlFor="pausa-corse" className="text-sm font-medium whitespace-nowrap">
+                Pausa tra corse (min)
+              </Label>
+              <Input
+                id="pausa-corse"
+                type="number"
+                placeholder="10"
+                min="0"
+                value={pausaCorse}
+                onChange={(e) => setPausaCorse(e.target.value)}
+                className="w-20 h-8 text-sm"
+                data-testid="input-pausa-corse"
+              />
+            </div>
+            <div className="w-px h-4 bg-border" />
+            <div className="flex items-center gap-2">
               <Label htmlFor="pausa-spostamenti" className="text-sm font-medium whitespace-nowrap">
                 Pausa spostamenti (min)
               </Label>
@@ -142,7 +159,7 @@ export default function Dashboard() {
               />
             </div>
             <span className="text-xs text-muted-foreground">
-              Parametri suggeritore merge · si aggiornano in tempo reale
+              si aggiornano in tempo reale
             </span>
           </div>
         )}
@@ -165,6 +182,7 @@ export default function Dashboard() {
             hideSosta={hideSosta}
             hideTempoAccessorio={hideTempoAccessorio}
             durataMassima={durataMassima}
+            pausaCorse={pausaCorse}
             pausaSpostamenti={pausaSpostamenti}
           />
         )}
