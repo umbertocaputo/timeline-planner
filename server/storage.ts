@@ -22,6 +22,8 @@ export interface IStorage {
   updateAttivita(id: number, updates: UpdateAttivitaRequest): Promise<Attivita>;
   deleteAttivita(id: number): Promise<void>;
   moveNastro(oldNastroId: string, newNastroId: string): Promise<boolean>;
+  moveAttivita(attivitaId: number, fromNastroId: string, toNastroId: string): Promise<boolean>;
+  insertSpostamento(nastroId: string, corsaInfo: { idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string }): Promise<boolean>;
   mergeNastro(
     targetNastroId: string,
     sourceNastroId: string,
@@ -93,6 +95,42 @@ export class DatabaseStorage implements IStorage {
       .update(attivita)
       .set({ nastroId: newNastroId })
       .where(eq(attivita.nastroId, oldNastroId));
+    return true;
+  }
+
+  async moveAttivita(attivitaId: number, fromNastroId: string, toNastroId: string): Promise<boolean> {
+    await db.update(attivita).set({ nastroId: toNastroId }).where(eq(attivita.id, attivitaId));
+    await db.insert(mergeLog).values({
+      tipoOperazione: "move-attivita",
+      targetNastroId: toNastroId,
+      sourceNastroId: fromNastroId,
+      bridgeCorsaId: null,
+      eseguiteAlle: new Date().toISOString(),
+    });
+    return true;
+  }
+
+  async insertSpostamento(
+    nastroId: string,
+    corsaInfo: { idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string }
+  ): Promise<boolean> {
+    await db.insert(attivita).values({
+      nastroId,
+      idCorsa: corsaInfo.idCorsa,
+      idOrigine: corsaInfo.idOrigine,
+      idDestinazione: corsaInfo.idDestinazione,
+      orarioInizio: corsaInfo.orarioInizio,
+      orarioFine: corsaInfo.orarioFine,
+      tipoAttivita: "corsa di spostamento",
+      isBridgeCorsa: false,
+    });
+    await db.insert(mergeLog).values({
+      tipoOperazione: "insert-spostamento",
+      targetNastroId: nastroId,
+      sourceNastroId: corsaInfo.idCorsa,
+      bridgeCorsaId: corsaInfo.idCorsa,
+      eseguiteAlle: new Date().toISOString(),
+    });
     return true;
   }
 

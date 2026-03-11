@@ -91,6 +91,33 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    moveAttivita: {
+      method: 'POST' as const,
+      path: '/api/attivita/move' as const,
+      input: z.object({
+        attivitaId: z.number(),
+        fromNastroId: z.string(),
+        toNastroId: z.string(),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean() }),
+      },
+    },
+    insertSpostamento: {
+      method: 'POST' as const,
+      path: '/api/nastri/insert-spostamento' as const,
+      input: z.object({
+        nastroId: z.string(),
+        idCorsa: z.string(),
+        idOrigine: z.string(),
+        idDestinazione: z.string(),
+        orarioInizio: z.string(),
+        orarioFine: z.string(),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean() }),
+      },
+    },
     clearAll: {
       method: 'DELETE' as const,
       path: '/api/attivita' as const,

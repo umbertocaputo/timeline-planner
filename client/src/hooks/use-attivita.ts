@@ -2,6 +2,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type AttivitaInput, type AttivitaUpdateInput, type MergeNastroInput, type InsertInSostaInput } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
 
+type MoveAttivitaInput = { attivitaId: number; fromNastroId: string; toNastroId: string };
+type InsertSpostamentoInput = { nastroId: string; idCorsa: string; idOrigine: string; idDestinazione: string; orarioInizio: string; orarioFine: string };
+
 export function useAttivita() {
   return useQuery({
     queryKey: [api.attivita.list.path],
@@ -186,6 +189,64 @@ export function useInsertInSosta() {
       queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.mergeLog.list.path] });
       toast({ title: "Inserimento completato", description: "Nastro inserito nella sosta, tempi accessori rimossi." });
+    },
+    onError: (error) => {
+      toast({ title: "Inserimento fallito", description: (error as Error).message, variant: "destructive" });
+    }
+  });
+}
+
+export function useMoveAttivita() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (input: MoveAttivitaInput) => {
+      const res = await fetch(api.attivita.moveAttivita.path, {
+        method: api.attivita.moveAttivita.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message || "Spostamento fallito");
+      }
+      return api.attivita.moveAttivita.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.mergeLog.list.path] });
+      toast({ title: "Corsa spostata", description: "La corsa è stata spostata nel nuovo nastro." });
+    },
+    onError: (error) => {
+      toast({ title: "Spostamento fallito", description: (error as Error).message, variant: "destructive" });
+    }
+  });
+}
+
+export function useInsertSpostamento() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (input: InsertSpostamentoInput) => {
+      const res = await fetch(api.attivita.insertSpostamento.path, {
+        method: api.attivita.insertSpostamento.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).message || "Inserimento spostamento fallito");
+      }
+      return api.attivita.insertSpostamento.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.attivita.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.mergeLog.list.path] });
+      toast({ title: "Spostamento inserito", description: "La corsa di spostamento è stata inserita nel nastro." });
     },
     onError: (error) => {
       toast({ title: "Inserimento fallito", description: (error as Error).message, variant: "destructive" });

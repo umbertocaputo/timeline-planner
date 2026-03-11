@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight } from "lucide-react";
+import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight, MoveRight, Bus } from "lucide-react";
 import { ExcelUploader } from "@/components/ExcelUploader";
 import { TransitiUploader } from "@/components/TransitiUploader";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
@@ -60,6 +60,14 @@ function MergeLogDialog({ open, onClose, entries }: { open: boolean; onClose: ()
                     <div className="w-7 h-7 rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
                       <Merge className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                     </div>
+                  ) : entry.tipoOperazione === "insert-spostamento" ? (
+                    <div className="w-7 h-7 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center">
+                      <Bus className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                    </div>
+                  ) : entry.tipoOperazione === "move-attivita" ? (
+                    <div className="w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-950 flex items-center justify-center">
+                      <MoveRight className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    </div>
                   ) : (
                     <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
                       <LogIn className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
@@ -74,17 +82,41 @@ function MergeLogDialog({ open, onClose, entries }: { open: boolean; onClose: ()
                       className={
                         entry.tipoOperazione === "merge"
                           ? "border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-400 text-[10px]"
-                          : "border-blue-200 text-blue-700 dark:border-blue-800 dark:text-blue-400 text-[10px]"
+                          : entry.tipoOperazione === "insert-spostamento"
+                            ? "border-green-200 text-green-700 dark:border-green-800 dark:text-green-400 text-[10px]"
+                            : entry.tipoOperazione === "move-attivita"
+                              ? "border-purple-200 text-purple-700 dark:border-purple-800 dark:text-purple-400 text-[10px]"
+                              : "border-blue-200 text-blue-700 dark:border-blue-800 dark:text-blue-400 text-[10px]"
                       }
                     >
-                      {entry.tipoOperazione === "merge" ? "Merge" : "In sosta"}
+                      {entry.tipoOperazione === "merge"
+                        ? "Merge"
+                        : entry.tipoOperazione === "insert-spostamento"
+                          ? "Spostamento"
+                          : entry.tipoOperazione === "move-attivita"
+                            ? "Corsa spostata"
+                            : "In sosta"}
                     </Badge>
-                    <span className="text-sm font-semibold">{entry.sourceNastroId}</span>
-                    <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
-                    <span className="text-sm font-semibold">{entry.targetNastroId}</span>
+                    {entry.tipoOperazione === "insert-spostamento" ? (
+                      <span className="text-sm font-semibold">
+                        Nastro {entry.targetNastroId} · corsa {entry.bridgeCorsaId}
+                      </span>
+                    ) : entry.tipoOperazione === "move-attivita" ? (
+                      <>
+                        <span className="text-sm font-semibold">{entry.sourceNastroId}</span>
+                        <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-semibold">{entry.targetNastroId}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm font-semibold">{entry.sourceNastroId}</span>
+                        <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-semibold">{entry.targetNastroId}</span>
+                      </>
+                    )}
                   </div>
 
-                  {entry.bridgeCorsaId && (
+                  {entry.bridgeCorsaId && entry.tipoOperazione === "merge" && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Corsa ponte: {entry.bridgeCorsaId}
                     </p>

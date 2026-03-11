@@ -4,8 +4,8 @@ import { type Attivita, type Transito } from "@shared/schema";
 import { AttivitaItem } from "./AttivitaItem";
 import { stringToColor } from "@/lib/color-utils";
 import { getPercentageOfDay } from "./TimeUtils";
-import { GripVertical, Lightbulb, Merge, Clock, MapPin, ArrowRight, LogIn } from "lucide-react";
-import { useMergeNastro, useInsertInSosta } from "@/hooks/use-attivita";
+import { GripVertical, Lightbulb, Merge, Clock, MapPin, ArrowRight, LogIn, ArrowRightLeft } from "lucide-react";
+import { useMergeNastro, useInsertInSosta, useInsertSpostamento } from "@/hooks/use-attivita";
 import {
   Popover,
   PopoverContent,
@@ -164,6 +164,7 @@ export function NastroRow({
   const [popoverOpen, setPopoverOpen] = useState(false);
   const { mutate: mergeNastro, isPending: isMerging } = useMergeNastro();
   const { mutate: insertInSosta, isPending: isInserting } = useInsertInSosta();
+  const { mutate: insertSpostamento, isPending: isInsertingSpostamento } = useInsertSpostamento();
 
   const sorted = useMemo(
     () =>
@@ -428,6 +429,40 @@ export function NastroRow({
     return results.sort((a, b) => b.fitMarginMins - a.fitMarginMins);
   }, [allNastriMap, nastroId, sorted, first, last]);
 
+  // ---- Mismatch transit suggestions ----
+  // For each mismatch pair (att.idDestinazione !== next.idOrigine), look for a transit corsa
+  const mismatchSuggestions = useMemo(() => {
+    const pausaSpostaMs = (parseInt(pausaSpostamenti) || 0) * 60000;
+    const map = new Map<string, BridgeCorsaInfo>(); // key = `${prevId}-${nextId}`
+
+    sorted.forEach((att, idx) => {
+      if (idx >= sorted.length - 1) return;
+      const next = sorted[idx + 1];
+      if (att.idDestinazione === next.idOrigine) return;
+      const bridge = findBridgeCorsa(
+        transitiByCorsa,
+        att.idDestinazione,
+        next.idOrigine,
+        new Date(att.orarioFine).getTime() + pausaSpostaMs,
+        new Date(next.orarioInizio).getTime() - pausaSpostaMs,
+      );
+      if (bridge) {
+        map.set(`${att.id}-${next.id}`, bridge);
+      }
+    });
+    return map;
+  }, [sorted, transitiByCorsa, pausaSpostamenti]);
+
+  // ---- Total corsa in linea duration (for label column) ----
+  const totalCorsaInLineaMins = useMemo(() => {
+    return sorted
+      .filter(a => a.tipoAttivita.toLowerCase() === "corsa in linea")
+      .reduce((sum, a) => {
+        const dur = (new Date(a.orarioFine).getTime() - new Date(a.orarioInizio).getTime()) / 60000;
+        return sum + dur;
+      }, 0);
+  }, [sorted]);
+
   // ---- DnD ----
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id: `nastro-${nastroId}`,
@@ -468,6 +503,22 @@ export function NastroRow({
         sostaId: sug.sostaId,
       });
       setPopoverOpen(false);
+    }
+  };
+
+  const handleInsertSpostamento = (bridge: BridgeCorsaInfo) => {
+    const dep = bridge.orarioInizio.slice(11, 16);
+    const arr = bridge.orarioFine.slice(11, 16);
+    const label = `Inserire corsa di spostamento ${bridge.idCorsa} (${bridge.idOrigine} → ${bridge.idDestinazione}, ${dep}–${arr}) nel nastro ${nastroId}?`;
+    if (confirm(label)) {
+      insertSpostamento({
+        nastroId,
+        idCorsa: bridge.idCorsa,
+        idOrigine: bridge.idOrigine,
+        idDestinazione: bridge.idDestinazione,
+        orarioInizio: bridge.orarioInizio,
+        orarioFine: bridge.orarioFine,
+      });
     }
   };
 
@@ -541,6 +592,15 @@ export function NastroRow({
             </span>
             <span className="text-xs text-muted-foreground font-mono shrink-0" title="Durata totale nastro">
               {duration}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 mt-0.5">
+            <Clock className="w-2.5 h-2.5 text-primary/60 shrink-0" />
+            <span
+              className="text-[10px] font-mono text-primary/80 font-medium shrink-0"
+              title="Somma durate corse in linea"
+            >
+              {formatMinutes(totalCorsaInLineaMins)}
             </span>
             {isNonCircular && (
               <ArrowRight
@@ -801,7 +861,28 @@ export function NastroRow({
           const next = sorted[idx + 1];
           if (att.idDestinazione === next.idOrigine) return null;
           const position = getPercentageOfDay(next.orarioInizio);
-          return (
+          const bridge = mismatchSuggestions.get(`${att.id}-${next.id}`);
+          const dep = bridge?.orarioInizio.slice(11, 16);
+          const arr = bridge?.orarioFine.slice(11, 16);
+          return bridge ? (
+            <button
+              key={`mismatch-${att.id}-${next.id}`}
+              className="absolute pointer-events-auto cursor-pointer group"
+              style={{ left: `${position}%`, top: "52px", width: "22px", height: "22px", marginLeft: "-11px", background: "none", border: "none", padding: 0 }}
+              title={`Spostamento disponibile: corsa ${bridge.idCorsa} (${att.idDestinazione} → ${next.idOrigine}, ${dep}–${arr}). Clicca per inserire.`}
+              disabled={isInsertingSpostamento}
+              onClick={() => handleInsertSpostamento(bridge)}
+              data-testid={`button-fix-mismatch-${att.id}-${next.id}`}
+            >
+              <svg
+                className="w-full h-full transition-transform group-hover:scale-125"
+                viewBox="0 0 20 20"
+              >
+                <polygon points="10,2 20,18 0,18" fill="#16a34a" opacity="0.85" />
+                <text x="10" y="16" textAnchor="middle" fontSize="9" fill="white" fontWeight="bold">+</text>
+              </svg>
+            </button>
+          ) : (
             <svg
               key={`mismatch-${att.id}-${next.id}`}
               className="absolute transition-opacity opacity-70 hover:opacity-100 pointer-events-auto"

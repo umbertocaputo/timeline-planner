@@ -93,6 +93,40 @@ export async function registerRoutes(
     }
   });
 
+  // Move single attivita to a different nastro (with logging)
+  app.post(api.attivita.moveAttivita.path, async (req, res) => {
+    try {
+      const input = api.attivita.moveAttivita.input.parse(req.body);
+      await storage.moveAttivita(input.attivitaId, input.fromNastroId, input.toNastroId);
+      res.status(200).json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      throw err;
+    }
+  });
+
+  // Insert a corsa di spostamento to fix a mismatch within a nastro
+  app.post(api.attivita.insertSpostamento.path, async (req, res) => {
+    try {
+      const input = api.attivita.insertSpostamento.input.parse(req.body);
+      await storage.insertSpostamento(input.nastroId, {
+        idCorsa: input.idCorsa,
+        idOrigine: input.idOrigine,
+        idDestinazione: input.idDestinazione,
+        orarioInizio: input.orarioInizio,
+        orarioFine: input.orarioFine,
+      });
+      res.status(200).json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      }
+      throw err;
+    }
+  });
+
   app.delete(api.attivita.clearAll.path, async (req, res) => {
     try {
       await storage.clearAllAttivita();

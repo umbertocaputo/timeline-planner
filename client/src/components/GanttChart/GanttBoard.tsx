@@ -11,7 +11,7 @@ import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { type Attivita, type Transito } from "@shared/schema";
 import { TimelineHeader } from "./TimelineHeader";
 import { NastroRow } from "./NastroRow";
-import { useUpdateAttivita, useMergeNastro } from "@/hooks/use-attivita";
+import { useMoveAttivita, useMergeNastro } from "@/hooks/use-attivita";
 
 interface GanttBoardProps {
   attivitaList: Attivita[];
@@ -34,7 +34,7 @@ export function GanttBoard({
   pausaCorse = "",
   pausaSpostamenti = "",
 }: GanttBoardProps) {
-  const { mutate: updateAttivita } = useUpdateAttivita();
+  const { mutate: moveAttivita } = useMoveAttivita();
   const { mutate: mergeNastro } = useMergeNastro();
 
   // Full unfiltered map for the merge suggester
@@ -101,7 +101,7 @@ export function GanttBoard({
       const att = activeData.attivita as Attivita;
       const targetNastroId = overData.nastroId as string;
       if (att.nastroId !== targetNastroId) {
-        updateAttivita({ id: att.id, nastroId: targetNastroId });
+        moveAttivita({ attivitaId: att.id, fromNastroId: att.nastroId, toNastroId: targetNastroId });
       }
     }
 
