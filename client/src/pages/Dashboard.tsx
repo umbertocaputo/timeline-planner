@@ -197,24 +197,25 @@ export default function Dashboard() {
                   {hideTempoAccessorio ? "Mostra" : "Nascondi"} T.A.
                 </Button>
 
-                {mergeCount > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowCronologia(true)}
-                    className="text-foreground border-border gap-1.5"
-                    data-testid="button-cronologia"
-                  >
-                    <History className="w-4 h-4" />
-                    Cronologia
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowCronologia(true)}
+                  disabled={mergeCount === 0}
+                  className="text-foreground border-border gap-1.5"
+                  data-testid="button-cronologia"
+                >
+                  <History className="w-4 h-4" />
+                  Cronologia
+                  {mergeCount > 0 && (
                     <Badge
                       variant="secondary"
                       className="h-4 min-w-4 px-1 text-[10px] font-bold rounded-full"
                     >
                       {mergeCount}
                     </Badge>
-                  </Button>
-                )}
+                  )}
+                </Button>
 
                 {snapshotInfo?.hasSnapshot && (
                   <Button
