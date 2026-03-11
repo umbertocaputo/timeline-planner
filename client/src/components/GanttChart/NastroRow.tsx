@@ -58,9 +58,34 @@ function formatMinutes(mins: number): string {
 }
 
 /**
+ * Extract time-of-day in minutes from an ISO string (ignores date, uses UTC time).
+ */
+function isoToMinutes(iso: string): number {
+  const d = new Date(iso);
+  return d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60;
+}
+
+/**
+ * Rewrite the date portion of a transito ISO string to match the reference date
+ * (taken from the attivita timestamps), so the inserted bridge corsa lands on the
+ * correct day in the Gantt chart.
+ */
+function normalizeTransitoDate(transitoIso: string, referenceDateMs: number): string {
+  const refDate = new Date(referenceDateMs);
+  const yyyy = refDate.getUTCFullYear();
+  const mm = String(refDate.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(refDate.getUTCDate()).padStart(2, "0");
+  const timePart = transitoIso.slice(11); // "HH:MM:SS.mmmZ"
+  return `${yyyy}-${mm}-${dd}T${timePart}`;
+}
+
+/**
  * Find a bridge corsa that departs from `fromLoc` after `minDepartureMs`
  * and arrives at `toLoc` before `maxArrivalMs`, with fromLoc stop
  * earlier in sequence than toLoc stop.
+ *
+ * Comparison is done on time-of-day only to avoid date mismatches between
+ * transiti (which may use a different calendar date) and attivita timestamps.
  */
 function findBridgeCorsa(
   transitiByCorsa: Map<string, Transito[]>,
@@ -69,6 +94,9 @@ function findBridgeCorsa(
   minDepartureMs: number,
   maxArrivalMs: number
 ): BridgeCorsaInfo | null {
+  const minDepartureMinutes = isoToMinutes(new Date(minDepartureMs).toISOString());
+  const maxArrivalMinutes = isoToMinutes(new Date(maxArrivalMs).toISOString());
+
   for (const [idCorsa, stops] of transitiByCorsa) {
     const sorted = [...stops].sort((a, b) => a.sequenza - b.sequenza);
 
@@ -78,23 +106,24 @@ function findBridgeCorsa(
     if (fromStopIdx === -1) continue;
 
     const fromStop = sorted[fromStopIdx];
-    const departureMs = new Date(fromStop.orarioPartenza!).getTime();
-    if (departureMs < minDepartureMs) continue;
+    const departureMinutes = isoToMinutes(fromStop.orarioPartenza!);
+    if (departureMinutes < minDepartureMinutes) continue;
 
     const toStop = sorted.slice(fromStopIdx + 1).find(
       (s) => s.idPunto === toLoc && s.orarioArrivo
     );
     if (!toStop) continue;
 
-    const arrivalMs = new Date(toStop.orarioArrivo!).getTime();
-    if (arrivalMs > maxArrivalMs) continue;
+    const arrivalMinutes = isoToMinutes(toStop.orarioArrivo!);
+    if (arrivalMinutes > maxArrivalMinutes) continue;
 
+    // Normalize transito dates to the same calendar date as the attivita data
     return {
       idCorsa,
       idOrigine: fromLoc,
       idDestinazione: toLoc,
-      orarioInizio: fromStop.orarioPartenza!,
-      orarioFine: toStop.orarioArrivo!,
+      orarioInizio: normalizeTransitoDate(fromStop.orarioPartenza!, minDepartureMs),
+      orarioFine: normalizeTransitoDate(toStop.orarioArrivo!, minDepartureMs),
     };
   }
   return null;
