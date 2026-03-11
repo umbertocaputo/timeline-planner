@@ -19,15 +19,15 @@ interface NastroRowProps {
   allNastriMap?: Map<string, Attivita[]>;
   transitiByCorsa?: Map<string, Transito[]>;
   durataMassima?: string;
-  pausaMinima?: string;
+  pausaSpostamenti?: string;
 }
 
 interface BridgeCorsaInfo {
   idCorsa: string;
   idOrigine: string;
   idDestinazione: string;
-  orarioInizio: string;  // departure from endLoc
-  orarioFine: string;    // arrival at startLoc
+  orarioInizio: string;
+  orarioFine: string;
 }
 
 interface SuggestedNastro {
@@ -57,10 +57,9 @@ function formatMinutes(mins: number): string {
 }
 
 /**
- * Given a transiti map, find a bridge corsa that:
- * - Passes through `fromLoc` (stop with departure >= minDepartureTime)
- * - Then passes through `toLoc` (at a later stop, with arrival <= maxArrivalTime)
- * Returns the first valid match.
+ * Find a bridge corsa that departs from `fromLoc` after `minDepartureMs`
+ * and arrives at `toLoc` before `maxArrivalMs`, with fromLoc stop
+ * earlier in sequence than toLoc stop.
  */
 function findBridgeCorsa(
   transitiByCorsa: Map<string, Transito[]>,
@@ -72,7 +71,6 @@ function findBridgeCorsa(
   for (const [idCorsa, stops] of transitiByCorsa) {
     const sorted = [...stops].sort((a, b) => a.sequenza - b.sequenza);
 
-    // Find a stop at fromLoc
     const fromStopIdx = sorted.findIndex(
       (s) => s.idPunto === fromLoc && s.orarioPartenza
     );
@@ -82,7 +80,6 @@ function findBridgeCorsa(
     const departureMs = new Date(fromStop.orarioPartenza!).getTime();
     if (departureMs < minDepartureMs) continue;
 
-    // Find a later stop at toLoc
     const toStop = sorted.slice(fromStopIdx + 1).find(
       (s) => s.idPunto === toLoc && s.orarioArrivo
     );
@@ -108,7 +105,7 @@ export function NastroRow({
   allNastriMap,
   transitiByCorsa = new Map(),
   durataMassima = "",
-  pausaMinima = "",
+  pausaSpostamenti = "",
 }: NastroRowProps) {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const { mutate: mergeNastro, isPending: isMerging } = useMergeNastro();
@@ -136,21 +133,14 @@ export function NastroRow({
   const duration = calculateDuration();
   const hasLocationMismatch = first && last && first.idOrigine !== last.idDestinazione;
 
-  // ---- Merge suggestion algorithm (same-location + bridge corsa) ----
+  // ---- Merge suggestion algorithm ----
   const suggestions = useMemo<SuggestedNastro[]>(() => {
     if (!allNastriMap || !last || !first) return [];
 
     const durataMassimaMinutes = parseDurataMassima(durataMassima);
-    const pausaMinimaMinutes = pausaMinima.trim() ? parseInt(pausaMinima) || 10 : 10;
-    const pausaMinimaMs = pausaMinimaMinutes * 60000;
-
-    const currentDurationMins =
-      (new Date(last.orarioFine).getTime() - new Date(first.orarioInizio).getTime()) / 60000;
-
-    // Last "corsa in linea" in current nastro
-    const lastCorsaAttuale = [...sorted]
-      .reverse()
-      .find((a) => a.tipoAttivita.toLowerCase() === "corsa in linea");
+    // Pausa spostamenti used only for bridge corsa window
+    const pausaSpostaMinutes = pausaSpostamenti.trim() ? parseInt(pausaSpostamenti) || 10 : 10;
+    const pausaSpostaMs = pausaSpostaMinutes * 60000;
 
     const endTime = new Date(last.orarioFine).getTime();
     const endLoc = last.idDestinazione;
@@ -182,20 +172,15 @@ export function NastroRow({
       let bridgeCorsa: BridgeCorsaInfo | undefined;
 
       if (candidateFirst.idOrigine === endLoc) {
-        // ---- Direct match (same location) ----
-        if (lastCorsaAttuale && firstCorsaCandidate) {
-          gapMins =
-            (new Date(firstCorsaCandidate.orarioInizio).getTime() -
-              new Date(lastCorsaAttuale.orarioFine).getTime()) /
-            60000;
-          if (gapMins < pausaMinimaMinutes) return;
-        }
+        // ---- Direct match (same location) — no pausa constraint ----
+        gapMins =
+          (new Date(candidateFirst.orarioInizio).getTime() - endTime) / 60000;
       } else {
-        // ---- Bridge corsa needed ----
+        // ---- Bridge corsa needed — uses pausaSpostamenti ----
         if (transitiByCorsa.size === 0) return;
 
-        const minDeparture = endTime + pausaMinimaMs;
-        const maxArrival = candidateFirstCorsaStart - pausaMinimaMs;
+        const minDeparture = endTime + pausaSpostaMs;
+        const maxArrival = candidateFirstCorsaStart - pausaSpostaMs;
 
         if (minDeparture >= maxArrival) return;
 
@@ -233,7 +218,7 @@ export function NastroRow({
     });
 
     return results.sort((a, b) => a.totalDurationMins - b.totalDurationMins);
-  }, [allNastriMap, nastroId, sorted, last, first, durataMassima, pausaMinima, transitiByCorsa]);
+  }, [allNastriMap, nastroId, sorted, last, first, durataMassima, pausaSpostamenti, transitiByCorsa]);
 
   // ---- DnD ----
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
@@ -253,8 +238,8 @@ export function NastroRow({
 
   const handleMerge = (sug: SuggestedNastro) => {
     const label = sug.bridgeCorsa
-      ? `Merge "${sug.nastroId}" in "${nastroId}" con corsa ponte ${sug.bridgeCorsa.idCorsa}?\n\nI tempi accessori di arrivo del nastro corrente e di partenza del nastro suggerito verranno eliminati.`
-      : `Merge "${sug.nastroId}" in "${nastroId}"?\n\nI tempi accessori di arrivo del nastro corrente e di partenza del nastro suggerito verranno eliminati.`;
+      ? `Merge "${sug.nastroId}" in "${nastroId}" con corsa ponte ${sug.bridgeCorsa.idCorsa}?\n\nI tempi accessori finali del nastro corrente e iniziali del nastro suggerito verranno eliminati.`
+      : `Merge "${sug.nastroId}" in "${nastroId}"?\n\nI tempi accessori finali del nastro corrente e iniziali del nastro suggerito verranno eliminati.`;
 
     if (confirm(label)) {
       mergeNastro({
@@ -370,7 +355,9 @@ export function NastroRow({
                   Nessun nastro compatibile trovato.
                   <br />
                   <span className="text-xs">
-                    Controlla i parametri di durata e pausa.
+                    {durataMassima && (
+                      <span className="block">Durata massima: {durataMassima}</span>
+                    )}
                     {transitiByCorsa.size === 0 && (
                       <span className="block mt-1 text-amber-600">
                         Carica il file transiti per trovare nastri con corsa ponte.
@@ -395,7 +382,6 @@ export function NastroRow({
                           <span className="text-xs text-muted-foreground truncate">{sug.endLocation}</span>
                         </div>
 
-                        {/* Bridge corsa indicator */}
                         {sug.bridgeCorsa && (
                           <div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-700 dark:text-amber-400 bg-yellow-50 dark:bg-yellow-950/40 rounded px-1.5 py-0.5 w-fit">
                             <ArrowRight className="w-3 h-3 shrink-0" />

@@ -20,7 +20,7 @@ interface GanttBoardProps {
   hideSosta?: boolean;
   hideTempoAccessorio?: boolean;
   durataMassima?: string;
-  pausaMinima?: string;
+  pausaSpostamenti?: string;
 }
 
 export function GanttBoard({
@@ -30,7 +30,7 @@ export function GanttBoard({
   hideSosta = false,
   hideTempoAccessorio = false,
   durataMassima = "",
-  pausaMinima = "",
+  pausaSpostamenti = "",
 }: GanttBoardProps) {
   const { mutate: updateAttivita } = useUpdateAttivita();
   const { mutate: moveNastro } = useMoveNastro();
@@ -140,7 +140,7 @@ export function GanttBoard({
                     allNastriMap={allNastriMap}
                     transitiByCorsa={transitiByCorsa}
                     durataMassima={durataMassima}
-                    pausaMinima={pausaMinima}
+                    pausaSpostamenti={pausaSpostamenti}
                   />
                 ))
               )}

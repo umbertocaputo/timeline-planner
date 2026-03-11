@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
-import { Upload, FileUp, Loader2 } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useBulkCreateAttivita } from "@/hooks/use-attivita";
 import { useToast } from "@/hooks/use-toast";
@@ -111,13 +111,14 @@ export function ExcelUploader() {
         onClick={() => fileInputRef.current?.click()} 
         disabled={isLoading}
         className="bg-primary text-primary-foreground hover-elevate active-elevate-2 shadow-sm gap-2"
+        data-testid="button-import-excel"
       >
         {isLoading ? (
           <Loader2 className="w-4 h-4 animate-spin" />
         ) : (
-          <FileUp className="w-4 h-4" />
+          <Sparkles className="w-4 h-4" />
         )}
-        Import Excel
+        Ottimizzazione
       </Button>
     </div>
   );

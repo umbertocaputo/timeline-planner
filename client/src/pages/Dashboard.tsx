@@ -4,7 +4,7 @@ import { ExcelUploader } from "@/components/ExcelUploader";
 import { TransitiUploader } from "@/components/TransitiUploader";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
 import { useAttivita, useClearAllAttivita } from "@/hooks/use-attivita";
-import { useTransiti } from "@/hooks/use-transiti";
+import { useTransiti, useClearAllTransiti } from "@/hooks/use-transiti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,10 +15,20 @@ export default function Dashboard() {
   const [hideSosta, setHideSosta] = useState(false);
   const [hideTempoAccessorio, setHideTempoAccessorio] = useState(false);
   const [durataMassima, setDurataMassima] = useState("");
-  const [pausaMinima, setPausaMinima] = useState("");
+  const [pausaSpostamenti, setPausaSpostamenti] = useState("");
   const { data: attivitaList, isLoading } = useAttivita();
   const { data: transitiList } = useTransiti();
-  const { mutate: clearAll, isPending: isClearing } = useClearAllAttivita();
+  const { mutate: clearAttivita, isPending: isClearingAttivita } = useClearAllAttivita();
+  const { mutate: clearTransiti, isPending: isClearingTransiti } = useClearAllTransiti();
+
+  const isClearing = isClearingAttivita || isClearingTransiti;
+
+  const handleSvuota = () => {
+    if (confirm("Sei sicuro di voler eliminare tutti i dati (nastri e transiti)? Questa azione è irreversibile.")) {
+      clearAttivita();
+      clearTransiti();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8 flex flex-col">
@@ -78,16 +88,12 @@ export default function Dashboard() {
                   data-testid="button-toggle-tempo-accessorio"
                   className="px-3"
                 >
-                  {hideTempoAccessorio ? "Mostra" : "Nascondi"} tempo accessorio
+                  {hideTempoAccessorio ? "Mostra" : "Nascondi"} T.A.
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    if (confirm("Sei sicuro di voler eliminare tutti i dati? Questa azione è irreversibile.")) {
-                      clearAll();
-                    }
-                  }}
+                  onClick={handleSvuota}
                   disabled={isClearing}
                   className="text-destructive hover:bg-destructive/10 hover:text-destructive hover-elevate border-destructive/20"
                   data-testid="button-clear-all"
@@ -107,7 +113,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-4 flex-wrap bg-muted/40 border border-border rounded-lg px-4 py-2">
             <div className="flex items-center gap-2">
               <Label htmlFor="durata-massima" className="text-sm font-medium whitespace-nowrap">
-                Durata complessiva Nastro
+                Durata complessiva nastro
               </Label>
               <Input
                 id="durata-massima"
@@ -121,22 +127,22 @@ export default function Dashboard() {
             </div>
             <div className="w-px h-4 bg-border" />
             <div className="flex items-center gap-2">
-              <Label htmlFor="pausa-minima" className="text-sm font-medium whitespace-nowrap">
-                Pausa (min)
+              <Label htmlFor="pausa-spostamenti" className="text-sm font-medium whitespace-nowrap">
+                Pausa spostamenti (min)
               </Label>
               <Input
-                id="pausa-minima"
+                id="pausa-spostamenti"
                 type="number"
                 placeholder="10"
                 min="0"
-                value={pausaMinima}
-                onChange={(e) => setPausaMinima(e.target.value)}
+                value={pausaSpostamenti}
+                onChange={(e) => setPausaSpostamenti(e.target.value)}
                 className="w-20 h-8 text-sm"
-                data-testid="input-pausa-minima"
+                data-testid="input-pausa-spostamenti"
               />
             </div>
             <span className="text-xs text-muted-foreground">
-              Parametri suggeritore merge
+              Parametri suggeritore merge · si aggiornano in tempo reale
             </span>
           </div>
         )}
@@ -159,7 +165,7 @@ export default function Dashboard() {
             hideSosta={hideSosta}
             hideTempoAccessorio={hideTempoAccessorio}
             durataMassima={durataMassima}
-            pausaMinima={pausaMinima}
+            pausaSpostamenti={pausaSpostamenti}
           />
         )}
       </main>

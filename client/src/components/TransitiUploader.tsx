@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import * as XLSX from "xlsx";
-import { Route, Loader2, Trash2 } from "lucide-react";
+import { Route, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useBulkCreateTransiti, useTransiti, useClearAllTransiti } from "@/hooks/use-transiti";
 import { useToast } from "@/hooks/use-toast";
@@ -115,22 +115,24 @@ export function TransitiUploader() {
         ) : (
           <Route className="w-4 h-4" />
         )}
-        {hasTransiti ? "Aggiorna transiti" : "Importa transiti"}
+        Transiti
+        {hasTransiti && (
+          <span className="ml-1 text-xs bg-primary/10 text-primary rounded px-1">
+            {transitiList.length}
+          </span>
+        )}
       </Button>
       {hasTransiti && (
-        <span className="text-xs text-muted-foreground">
-          {transitiList.length} transiti
-          <button
-            onClick={() => {
-              if (confirm("Eliminare tutti i transiti?")) clearAll();
-            }}
-            disabled={isClearing}
-            className="ml-1 text-destructive hover:underline"
-            data-testid="button-clear-transiti"
-          >
-            (elimina)
-          </button>
-        </span>
+        <button
+          onClick={() => {
+            if (confirm("Eliminare tutti i transiti?")) clearAll();
+          }}
+          disabled={isClearing}
+          className="text-xs text-destructive hover:underline"
+          data-testid="button-clear-transiti"
+        >
+          ×
+        </button>
       )}
     </div>
   );
