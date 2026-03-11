@@ -133,7 +133,18 @@ export function NastroRow({
   };
 
   const duration = calculateDuration();
-  const hasLocationMismatch = first && last && first.idOrigine !== last.idDestinazione;
+
+  // True mismatch: an internal discontinuity where one activity ends at location X
+  // and the very next activity starts at location Y ≠ X (without a bridge corsa bridging them).
+  const hasLocationMismatch = useMemo(() => {
+    if (sorted.length < 2) return false;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const curr = sorted[i];
+      const next = sorted[i + 1];
+      if (curr.idDestinazione !== next.idOrigine) return true;
+    }
+    return false;
+  }, [sorted]);
 
   // ---- Merge suggestion algorithm ----
   const suggestions = useMemo<SuggestedNastro[]>(() => {
