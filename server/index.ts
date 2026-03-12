@@ -1,6 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import pkg from "pg";
+import { registerRoutes } from "./routes"; // tue API
+import { serveStatic } from "./serveStatic"; // frontend Vite buildato
 
 const { Client } = pkg;
 
@@ -25,30 +27,46 @@ console.log("DB_PORT:", process.env.DB_PORT);
 console.log("DB_USER:", process.env.DB_USER);
 console.log("DB_NAME:", process.env.DB_NAME);
 
-// 🔹 Test connessione al DB con SSL
-(async () => {
-  const client = new Client({
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || "5432", 10),
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    ssl: { rejectUnauthorized: false }, // 🔹 SSL obbligatorio su Render
+// 🔹 Connessione al DB con SSL
+const dbClient = new Client({
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT || "5432", 10),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  ssl: { rejectUnauthorized: false },
+});
+
+dbClient.connect()
+  .then(() => log("✅ DB connection successful!"))
+  .catch((err) => {
+    console.error("❌ DB connection failed:", err);
+    process.exit(1);
   });
 
-  try {
-    await client.connect();
-    log("✅ DB connection successful!");
-    await client.end();
-  } catch (err) {
-    console.error("❌ DB connection failed:", err);
-    process.exit(1); // crash con log dettagliato per debug
+// 🔹 Registra API routes
+(async () => {
+  await registerRoutes(httpServer, app);
+
+  // Middleware gestione errori
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+    console.error("Internal Server Error:", err);
+
+    if (res.headersSent) return next(err);
+    return res.status(status).json({ message });
+  });
+
+  // 🔹 Serve frontend Vite solo in produzione
+  if (process.env.NODE_ENV === "production") {
+    serveStatic(app); // punta a client/dist/public
   }
 
-  // 🔹 Avvio server minimo per test porta
+  // 🔹 Avvio server
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen({ port, host: "0.0.0.0" }, () => {
     log(`Server listening on port ${port}`);
-    log("Ready to receive requests (debug mode)");
+    log("Ready to receive requests");
   });
 })();
