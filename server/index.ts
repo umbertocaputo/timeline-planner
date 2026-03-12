@@ -58,15 +58,19 @@ const dbClient = new Client({
 });
 
 (async () => {
+
+  console.log("STEP 1: connecting to DB");
+
   try {
     await dbClient.connect();
     log("✅ DB connection successful!");
   } catch (err) {
     console.error("❌ DB connection failed:", err);
-    process.exit(1); // crash con log dettagliato
+    process.exit(1);
   }
 
-  // 🔹 Registra API routes
+  console.log("STEP 2: registering routes");
+
   try {
     await registerRoutes(httpServer, app);
     log("✅ API routes registered");
@@ -75,7 +79,8 @@ const dbClient = new Client({
     process.exit(1);
   }
 
-  // 🔹 Serve frontend in produzione
+  console.log("STEP 3: loading static files");
+
   if (process.env.NODE_ENV === "production") {
     try {
       serveStatic(app);
@@ -85,6 +90,8 @@ const dbClient = new Client({
       process.exit(1);
     }
   }
+
+  console.log("STEP 4: starting server");
 
   // 🔹 Middleware gestione errori generici
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -96,10 +103,11 @@ const dbClient = new Client({
     return res.status(status).json({ message });
   });
 
-  // 🔹 Avvio server
   const port = parseInt(process.env.PORT || "5000", 10);
+
   httpServer.listen({ port, host: "0.0.0.0" }, () => {
     log(`Server listening on port ${port}`);
     log("Ready to receive requests");
   });
+
 })();
