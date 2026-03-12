@@ -4,7 +4,7 @@ import path from "path";
 
 export function serveStatic(app: Express) {
   // percorso corretto per il frontend buildato da Vite
-  const distPath = path.resolve(__dirname, "../client/dist/public");
+  const distPath = path.resolve(__dirname, "../dist/public");
 
   if (!fs.existsSync(distPath)) {
     throw new Error(
