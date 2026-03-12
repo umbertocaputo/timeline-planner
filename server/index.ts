@@ -71,8 +71,13 @@ app.use((req, res, next) => {
     console.log("DB_USER:", process.env.DB_USER);
     console.log("DB_NAME:", process.env.DB_NAME);
 
-    // 🔹 Registrazione routes
-    await registerRoutes(httpServer, app);
+    // 🔹 Registrazione routes con try/catch per catturare errori DB
+    try {
+      await registerRoutes(httpServer, app);
+    } catch (err) {
+      console.error("ERROR DURING REGISTER ROUTES:", err);
+      process.exit(1); // forza crash con log dettagliato
+    }
 
     // 🔹 Error handler globale
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
