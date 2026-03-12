@@ -2,7 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import pkg from "pg";
 import { registerRoutes } from "./routes"; // tue API
-import { serveStatic } from "./serveStatic"; // frontend Vite buildato
+import { serveStatic } from "./static"; //import { serveStatic } from "./serveStatic"; frontend Vite buildato
 
 const { Client } = pkg;
 
