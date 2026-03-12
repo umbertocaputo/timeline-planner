@@ -53,7 +53,6 @@ app.use((req, res, next) => {
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
-
       log(logLine);
     }
   });
@@ -72,7 +71,7 @@ app.use((req, res, next) => {
     console.log("DB_USER:", process.env.DB_USER);
     console.log("DB_NAME:", process.env.DB_NAME);
 
-    // 🔹 Registrazione routes (può fare connessione DB)
+    // 🔹 Registrazione routes
     await registerRoutes(httpServer, app);
 
     // 🔹 Error handler globale
@@ -92,16 +91,17 @@ app.use((req, res, next) => {
       await setupVite(httpServer, app);
     }
 
-    // 🔹 Avvio server
+    // 🔹 Avvio server sulla porta fornita da Render
     const port = parseInt(process.env.PORT || "5000", 10);
+    console.log("DEBUG: Binding server to port", port); // log importante
     httpServer.listen(
       { port, host: "0.0.0.0", reusePort: true },
       () => {
-        log(`serving on port ${port}`);
+        log(`Server listening on port ${port}`);
       },
     );
   } catch (err) {
     console.error("ERROR STARTING SERVER:", err);
-    process.exit(1); // forza crash per renderizzare l’errore nei log
+    process.exit(1); // forza crash con log per debug su Render
   }
 })();
