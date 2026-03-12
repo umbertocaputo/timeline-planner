@@ -57,6 +57,17 @@ const dbClient = new Client({
   ssl: { rejectUnauthorized: false }, // obbligatorio su Render
 });
 
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION");
+  console.error(err);
+  console.error(err.stack);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("UNHANDLED REJECTION");
+  console.error(err);
+});
+
 (async () => {
 
   console.log("STEP 1: connecting to DB");
@@ -71,13 +82,16 @@ const dbClient = new Client({
 
   console.log("STEP 2: registering routes");
 
-  try {
-    await registerRoutes(httpServer, app);
-    log("✅ API routes registered");
-  } catch (err) {
-    console.error("❌ Error registering routes:", err);
-    process.exit(1);
-  }
+ try {
+  await registerRoutes(httpServer, app);
+  log("✅ API routes registered");
+} catch (err) {
+  console.error("❌ Error registering routes:");
+  console.error(err);
+  console.error("STACK:");
+  console.error((err as any)?.stack);
+  process.exit(1);
+}
 
   console.log("STEP 3: loading static files");
 
