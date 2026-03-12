@@ -1,36 +1,12 @@
 import express, { type Request, Response, NextFunction, type Express } from "express";
-import { createServer, type Server } from "http";
+import { createServer } from "http";
 import pkg from "pg";
-import path from "path";
-import fs from "fs";
 import { registerRoutes } from "./routes";
-
-// 🔹 Fix __dirname in ESM
-import { fileURLToPath } from "url";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// 🔹 Serve frontend Vite buildato
-function serveStatic(app: Express) {
-  const distPath = path.resolve(__dirname, "../dist/public");
-
-  if (!fs.existsSync(distPath)) {
-    throw new Error(
-      `Could not find the build directory: ${distPath}. Make sure the client is built.`
-    );
-  }
-
-  app.use(express.static(distPath));
-
-  // Catch-all SPA
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(distPath, "index.html"));
-  });
-}
+import { serveStatic } from "./static"; // Usa solo questa
+import path from "path";
 
 // 🔹 DB Client
 const { Client } = pkg;
-
 const dbClient = new Client({
   host: process.env.DB_HOST,
   port: parseInt(process.env.DB_PORT || "5432", 10),
@@ -55,14 +31,13 @@ function log(message: string) {
 // 🔹 Catch uncaught exceptions / unhandled rejections
 process.on("uncaughtException", (err) => {
   console.error("💥 Uncaught Exception:", err);
-  process.exit(1);
 });
 process.on("unhandledRejection", (reason) => {
   console.error("💥 Unhandled Rejection:", reason);
-  process.exit(1);
 });
 
-// 🔹 DEBUG variabili ambiente
+// 🔹 DEBUG immediato per capire se il file viene eseguito
+console.log("DEBUG: index.ts partito");
 log(`NODE_ENV: ${process.env.NODE_ENV}`);
 log(`PORT: ${process.env.PORT}`);
 log(`DB_HOST: ${process.env.DB_HOST}`);
@@ -78,7 +53,7 @@ log(`DB_NAME: ${process.env.DB_NAME}`);
     log("✅ DB connection successful!");
   } catch (err) {
     console.error("❌ DB connection failed:", err);
-    process.exit(1);
+    // NON uscire subito: continuiamo per debug
   }
 
   log("STEP 2: registering API routes");
@@ -87,7 +62,6 @@ log(`DB_NAME: ${process.env.DB_NAME}`);
     log("✅ API routes registered");
   } catch (err) {
     console.error("❌ Error registering routes:", err);
-    process.exit(1);
   }
 
   if (process.env.NODE_ENV === "production") {
@@ -97,7 +71,6 @@ log(`DB_NAME: ${process.env.DB_NAME}`);
       log("✅ Frontend serveStatic loaded");
     } catch (err) {
       console.error("❌ serveStatic error:", err);
-      process.exit(1);
     }
   }
 
