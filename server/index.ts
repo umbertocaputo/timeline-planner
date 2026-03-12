@@ -69,59 +69,50 @@ process.on("unhandledRejection", (err) => {
 });
 
 (async () => {
-
-  console.log("STEP 1: connecting to DB");
-
   try {
+    console.log("STEP 0: starting server bootstrap");
+
+    console.log("STEP 1: connecting to DB");
     await dbClient.connect();
     log("✅ DB connection successful!");
-  } catch (err) {
-    console.error("❌ DB connection failed:", err);
-    process.exit(1);
-  }
 
-  console.log("STEP 2: registering routes");
+    console.log("STEP 2: registering API routes");
+    await registerRoutes(httpServer, app);
+    log("✅ API routes registered");
 
- try {
-  await registerRoutes(httpServer, app);
-  log("✅ API routes registered");
-} catch (err) {
-  console.error("❌ Error registering routes:");
-  console.error(err);
-  console.error("STACK:");
-  console.error((err as any)?.stack);
-  process.exit(1);
-}
-
-  console.log("STEP 3: loading static files");
-
-  if (process.env.NODE_ENV === "production") {
-    try {
+    console.log("STEP 3: serving static files if production");
+    if (process.env.NODE_ENV === "production") {
       serveStatic(app);
       log("✅ Frontend serveStatic loaded");
-    } catch (err) {
-      console.error("❌ serveStatic error:", err);
-      process.exit(1);
     }
+
+    console.log("STEP 4: adding error handler");
+    app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      console.error("Internal Server Error:", err);
+
+      if (res.headersSent) return next(err);
+      return res.status(status).json({ message });
+    });
+
+    console.log("STEP 5: starting HTTP server");
+    const port = parseInt(process.env.PORT || "5000", 10);
+    httpServer.listen({ port, host: "0.0.0.0" }, () => {
+      log(`Server listening on port ${port}`);
+      log("Ready to receive requests");
+    });
+
+    // Eventi globali per logging crash
+    process.on("uncaughtException", (err) => {
+      console.error("UNCAUGHT EXCEPTION:", err);
+    });
+    process.on("unhandledRejection", (reason) => {
+      console.error("UNHANDLED REJECTION:", reason);
+    });
+
+  } catch (err) {
+    console.error("FATAL ERROR DURING BOOTSTRAP:", err);
+    process.exit(1);
   }
-
-  console.log("STEP 4: starting server");
-
-  // 🔹 Middleware gestione errori generici
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    console.error("Internal Server Error:", err);
-
-    if (res.headersSent) return next(err);
-    return res.status(status).json({ message });
-  });
-
-  const port = parseInt(process.env.PORT || "5000", 10);
-
-  httpServer.listen({ port, host: "0.0.0.0" }, () => {
-    log(`Server listening on port ${port}`);
-    log("Ready to receive requests");
-  });
-
 })();
