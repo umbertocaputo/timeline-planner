@@ -9,7 +9,7 @@ import { registerRoutes } from "./routes";
 
 // 🔹 Serve frontend Vite buildato
 function serveStatic(app: express.Express) {
-  const distPath = path.resolve(__dirname, "../client/dist/public");
+  const distPath = path.resolve(__dirname, "../dist/public");
 
   if (!fs.existsSync(distPath)) {
     throw new Error(
@@ -19,7 +19,6 @@ function serveStatic(app: express.Express) {
 
   app.use(express.static(distPath));
 
-  // Catch-all per SPA
   app.get("*", (_req, res) => {
     res.sendFile(path.join(distPath, "index.html"));
   });
