@@ -25,7 +25,7 @@ console.log("DB_PORT:", process.env.DB_PORT);
 console.log("DB_USER:", process.env.DB_USER);
 console.log("DB_NAME:", process.env.DB_NAME);
 
-// 🔹 Test connessione al DB
+// 🔹 Test connessione al DB con SSL
 (async () => {
   const client = new Client({
     host: process.env.DB_HOST,
@@ -33,6 +33,7 @@ console.log("DB_NAME:", process.env.DB_NAME);
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
+    ssl: { rejectUnauthorized: false }, // 🔹 SSL obbligatorio su Render
   });
 
   try {
@@ -41,7 +42,7 @@ console.log("DB_NAME:", process.env.DB_NAME);
     await client.end();
   } catch (err) {
     console.error("❌ DB connection failed:", err);
-    process.exit(1); // crash per Render ma con log dettagliato
+    process.exit(1); // crash con log dettagliato per debug
   }
 
   // 🔹 Avvio server minimo per test porta
