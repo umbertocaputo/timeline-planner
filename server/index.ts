@@ -1,111 +1,53 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { serveStatic } from "./static";
 import { createServer } from "http";
+import pkg from "pg";
+
+const { Client } = pkg;
 
 const app = express();
 const httpServer = createServer(app);
 
-declare module "http" {
-  interface IncomingMessage {
-    rawBody: unknown;
-  }
-}
-
-// Middleware per raw body
-app.use(
-  express.json({
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
+// Middleware base
+app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Funzione di log interna
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-  console.log(`${formattedTime} [${source}] ${message}`);
+// Log interno
+function log(message: string) {
+  console.log(`[LOG] ${new Date().toISOString()} :: ${message}`);
 }
 
-// Middleware per log delle API
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+// 🔹 DEBUG: variabili ambiente
+console.log("DEBUG: Environment variables:");
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("PORT:", process.env.PORT);
+console.log("DB_HOST:", process.env.DB_HOST);
+console.log("DB_PORT:", process.env.DB_PORT);
+console.log("DB_USER:", process.env.DB_USER);
+console.log("DB_NAME:", process.env.DB_NAME);
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-      log(logLine);
-    }
+// 🔹 Test connessione al DB
+(async () => {
+  const client = new Client({
+    host: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT || "5432", 10),
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
   });
 
-  next();
-});
-
-(async () => {
   try {
-    // 🔹 DEBUG iniziale
-    console.log("DEBUG: Starting server...");
-    console.log("ENV:", process.env.NODE_ENV);
-    console.log("PORT:", process.env.PORT);
-    console.log("DB_HOST:", process.env.DB_HOST);
-    console.log("DB_PORT:", process.env.DB_PORT);
-    console.log("DB_USER:", process.env.DB_USER);
-    console.log("DB_NAME:", process.env.DB_NAME);
-
-    // 🔹 Registrazione routes con try/catch per catturare errori DB
-    try {
-      await registerRoutes(httpServer, app);
-    } catch (err) {
-      console.error("ERROR DURING REGISTER ROUTES:", err);
-      process.exit(1); // forza crash ma con log dettagliato
-    }
-
-    // 🔹 Error handler globale
-    app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-      const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
-      console.error("Internal Server Error:", err);
-      if (res.headersSent) return next(err);
-      return res.status(status).json({ message });
-    });
-
-    // 🔹 Serve static solo in produzione
-    if (process.env.NODE_ENV === "production") {
-      serveStatic(app);
-    } else {
-      const { setupVite } = await import("./vite");
-      await setupVite(httpServer, app);
-    }
-
-    // 🔹 Avvio server sulla porta fornita da Render
-    const port = parseInt(process.env.PORT || "5000", 10);
-    console.log("DEBUG: Binding server to port", port); // log importante
-    httpServer.listen(
-      { port, host: "0.0.0.0", reusePort: true },
-      () => {
-        log(`Server listening on port ${port}`);
-      },
-    );
+    await client.connect();
+    log("✅ DB connection successful!");
+    await client.end();
   } catch (err) {
-    console.error("ERROR STARTING SERVER:", err);
-    process.exit(1); // forza crash con log per debug su Render
+    console.error("❌ DB connection failed:", err);
+    process.exit(1); // crash per Render ma con log dettagliato
   }
+
+  // 🔹 Avvio server minimo per test porta
+  const port = parseInt(process.env.PORT || "5000", 10);
+  httpServer.listen({ port, host: "0.0.0.0" }, () => {
+    log(`Server listening on port ${port}`);
+    log("Ready to receive requests (debug mode)");
+  });
 })();
