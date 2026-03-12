@@ -3,6 +3,8 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import path from "path";
+import fs from "fs";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -205,6 +207,17 @@ export async function registerRoutes(
     } catch (err) {
       throw err;
     }
+  });
+
+  app.get("/api/download-dump", (req, res) => {
+    const dumpPath = path.resolve(process.cwd(), "dump_nastri.sql");
+    if (!fs.existsSync(dumpPath)) {
+      res.status(404).json({ error: "File dump non trovato" });
+      return;
+    }
+    res.setHeader("Content-Disposition", "attachment; filename=dump_nastri.sql");
+    res.setHeader("Content-Type", "text/plain");
+    res.sendFile(dumpPath);
   });
 
   return httpServer;
