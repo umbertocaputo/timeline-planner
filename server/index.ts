@@ -30,7 +30,6 @@ export function log(message: string, source = "express") {
     second: "2-digit",
     hour12: true,
   });
-
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
@@ -76,7 +75,7 @@ app.use((req, res, next) => {
       await registerRoutes(httpServer, app);
     } catch (err) {
       console.error("ERROR DURING REGISTER ROUTES:", err);
-      process.exit(1); // forza crash con log dettagliato
+      process.exit(1); // forza crash ma con log dettagliato
     }
 
     // 🔹 Error handler globale
