@@ -35,14 +35,17 @@ function parseExcelTime(val: any): string {
 /**
  * Normalize nastro IDs from the Ottimizzazione file.
  * Ensures the numeric part is zero-padded to at least 2 digits.
- * Examples: "N0GO" → "N00GO", "N1GO" → "N01GO", "N12GO" stays "N12GO".
+ * Handles both letter-O and digit-zero in the suffix (G0 / GO).
+ * Examples: "N1G0" → "N01G0", "N1GO" → "N01GO", "N12G0" stays "N12G0".
  */
 function normalizeNastroId(id: string): string {
-  const match = id.match(/^(N)(\d+)(GO)$/i);
-  if (!match) return id;
+  const trimmed = id.trim();
+  // Match: N + one-or-more digits + any trailing suffix (G0, GO, G, etc.)
+  const match = trimmed.match(/^(N)(\d+)(.*)$/i);
+  if (!match) return trimmed;
   const [, prefix, digits, suffix] = match;
   const padded = digits.padStart(2, "0");
-  return `${prefix}${padded}${suffix.toUpperCase()}`;
+  return `${prefix.toUpperCase()}${padded}${suffix.toUpperCase()}`;
 }
 
 export function ExcelUploader() {
