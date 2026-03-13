@@ -5,6 +5,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import path from "path";
 import fs from "fs";
+import { ottimizza, type OttimizzazioneParams, type CorsaInput } from "./optimizer";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -218,6 +219,93 @@ export async function registerRoutes(
     res.setHeader("Content-Disposition", "attachment; filename=dump_nastri.sql");
     res.setHeader("Content-Type", "text/plain");
     res.sendFile(dumpPath);
+  });
+
+  app.get("/api/download/excel-uploader", (_req, res) => {
+    const filePath = path.resolve(process.cwd(), "client/src/components/ExcelUploader.tsx");
+    res.setHeader("Content-Disposition", "attachment; filename=ExcelUploader.tsx");
+    res.setHeader("Content-Type", "text/plain");
+    res.sendFile(filePath);
+  });
+
+  app.get("/api/download/server-index", (_req, res) => {
+    const filePath = path.resolve(process.cwd(), "server/index.ts");
+    res.setHeader("Content-Disposition", "attachment; filename=index.ts");
+    res.setHeader("Content-Type", "text/plain");
+    res.sendFile(filePath);
+  });
+
+  // ---- Ottimizzazione ----
+
+  const ottimizzazioneParamsSchema = z.object({
+    durataMassimaNastroMinuti: z.number().int().min(60).max(960).default(495),
+    durataMinimaNoastroMinuti: z.number().int().min(0).max(960).default(315),
+    durataTempoAccessorioInizioMinuti: z.number().int().min(0).max(120).default(30),
+    durataTempoAccessorioFineMinuti: z.number().int().min(0).max(120).default(20),
+    durataMinimaSostaMinuti: z.number().int().min(0).max(60).default(5),
+    data: z.string(),
+    deposito: z.string().default(""),
+    localitaTermine: z.array(z.string()).default([]),
+  });
+
+  const corsaInputSchema = z.object({
+    idCorsa: z.string(),
+    idOrigine: z.string(),
+    idDestinazione: z.string(),
+    orarioInizio: z.string(),
+    orarioFine: z.string(),
+  });
+
+  const ottimizzazioneRequestSchema = z.object({
+    corse: z.array(corsaInputSchema).min(1),
+    params: ottimizzazioneParamsSchema,
+  });
+
+  // Anteprima (non salva nel DB)
+  app.post("/api/ottimizzazione/anteprima", async (req, res) => {
+    try {
+      console.log("[ottimizzazione] body keys:", Object.keys(req.body || {}), "corse count:", req.body?.corse?.length ?? "n/a");
+      const { corse, params } = ottimizzazioneRequestSchema.parse(req.body);
+      const result = ottimizza(corse as CorsaInput[], params as OttimizzazioneParams);
+      console.log("[ottimizzazione] risultato: nastri=", result.nastriGenerati, "corse=", result.corseAssegnate);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        console.error("[ottimizzazione] Zod error:", err.errors);
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Errore ottimizzazione:", err);
+      res.status(500).json({ message: "Errore interno durante l'ottimizzazione" });
+    }
+  });
+
+  // Applica — cancella attività esistenti e salva i nastri ottimizzati
+  app.post("/api/ottimizzazione/applica", async (req, res) => {
+    try {
+      const { corse, params } = ottimizzazioneRequestSchema.parse(req.body);
+      const result = ottimizza(corse as CorsaInput[], params as OttimizzazioneParams);
+
+      // Raccoglie tutte le attività da inserire
+      const tutteLeAttivita = result.nastri.flatMap(n => n.attivita).map(a => ({
+        nastroId: a.nastroId,
+        idOrigine: a.idOrigine,
+        idDestinazione: a.idDestinazione,
+        orarioInizio: a.orarioInizio,
+        orarioFine: a.orarioFine,
+        tipoAttivita: a.tipoAttivita,
+        idCorsa: a.idCorsa,
+        isBridgeCorsa: a.isBridgeCorsa,
+      }));
+
+      const saved = await storage.bulkCreateAttivita(tutteLeAttivita);
+      res.status(201).json({ attivita: saved, riepilogo: result });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Errore applica ottimizzazione:", err);
+      res.status(500).json({ message: "Errore interno durante l'applicazione" });
+    }
   });
 
   return httpServer;

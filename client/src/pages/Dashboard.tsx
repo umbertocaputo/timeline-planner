@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
-import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight, MoveRight, Bus, ListFilter, PlusCircle, ChevronDown, ChevronUp, Shuffle } from "lucide-react";
+import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight, MoveRight, Bus, ListFilter, PlusCircle, ChevronDown, ChevronUp, Shuffle, Sparkles } from "lucide-react";
 import { ExcelUploader } from "@/components/ExcelUploader";
 import { TransitiUploader } from "@/components/TransitiUploader";
+import { OttimizzazioneMotoreDialog } from "@/components/OttimizzazioneMotoreDialog";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
 import { useAttivita, useClearAllAttivita, useResetToSnapshot, useHasSnapshot, useMergeLogs, useInsertCorsa, type InsertCorsaInput } from "@/hooks/use-attivita";
 import { useTransiti, useClearAllTransiti } from "@/hooks/use-transiti";
@@ -331,6 +332,7 @@ export default function Dashboard() {
   const [pausaSpostamenti, setPausaSpostamenti] = useState("");
   const [showCronologia, setShowCronologia] = useState(false);
   const [showCorseNonAssegnate, setShowCorseNonAssegnate] = useState(false);
+  const [showOttimizzazioneMotore, setShowOttimizzazioneMotore] = useState(false);
 
   const { data: attivitaList, isLoading } = useAttivita();
   const { data: transitiList } = useTransiti();
@@ -593,6 +595,16 @@ export default function Dashboard() {
             )}
             <ExcelUploader />
             <TransitiUploader />
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="button-motore-ottimizzazione"
+              onClick={() => setShowOttimizzazioneMotore(true)}
+              className="gap-2 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-950"
+            >
+              <Sparkles className="w-4 h-4" />
+              Ottimizza nastri
+            </Button>
           </div>
         </div>
 
@@ -690,6 +702,13 @@ export default function Dashboard() {
         corseSuggerimenti={corseSuggerimenti}
         onInsert={handleInsertCorsa}
         isInserting={isInsertingCorsa}
+      />
+
+      {/* Motore di ottimizzazione dialog */}
+      <OttimizzazioneMotoreDialog
+        open={showOttimizzazioneMotore}
+        onOpenChange={setShowOttimizzazioneMotore}
+        selectedDate={new Date().toISOString().split("T")[0]}
       />
     </div>
   );
