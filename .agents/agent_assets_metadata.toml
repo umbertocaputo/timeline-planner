@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "v--GQJXIbgoXQbxizcgpH"
+uri = "file://nastri-lavorativi.tar.gz"
+type = "unspecified"
+title = "nastri-lavorativi.tar.gz — Sorgente completo del progetto"

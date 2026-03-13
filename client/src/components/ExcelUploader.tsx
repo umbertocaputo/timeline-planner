@@ -127,7 +127,7 @@ export function ExcelUploader() {
         ) : (
           <Sparkles className="w-4 h-4" />
         )}
-        Ottimizzazione
+        Import Soluzione
       </Button>
     </div>
   );

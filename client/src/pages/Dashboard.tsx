@@ -1,8 +1,10 @@
-import { useState, useMemo } from "react";
-import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight, MoveRight, Bus, ListFilter, PlusCircle, ChevronDown, ChevronUp, Shuffle, Sparkles } from "lucide-react";
+import { useState, useMemo, useCallback } from "react";
+import * as XLSX from "xlsx";
+import { CalendarDays, Trash2, RotateCcw, History, Merge, LogIn, ArrowRight, MoveRight, Bus, ListFilter, PlusCircle, ChevronDown, ChevronUp, Shuffle, Sparkles, Train, Table2, Download } from "lucide-react";
 import { ExcelUploader } from "@/components/ExcelUploader";
 import { TransitiUploader } from "@/components/TransitiUploader";
 import { OttimizzazioneMotoreDialog } from "@/components/OttimizzazioneMotoreDialog";
+import { TransitiViewerDialog } from "@/components/TransitiViewerDialog";
 import { GanttBoard } from "@/components/GanttChart/GanttBoard";
 import { useAttivita, useClearAllAttivita, useResetToSnapshot, useHasSnapshot, useMergeLogs, useInsertCorsa, type InsertCorsaInput } from "@/hooks/use-attivita";
 import { useTransiti, useClearAllTransiti } from "@/hooks/use-transiti";
@@ -333,6 +335,7 @@ export default function Dashboard() {
   const [showCronologia, setShowCronologia] = useState(false);
   const [showCorseNonAssegnate, setShowCorseNonAssegnate] = useState(false);
   const [showOttimizzazioneMotore, setShowOttimizzazioneMotore] = useState(false);
+  const [showTransitiViewer, setShowTransitiViewer] = useState(false);
 
   const { data: attivitaList, isLoading } = useAttivita();
   const { data: transitiList } = useTransiti();
@@ -345,6 +348,13 @@ export default function Dashboard() {
 
   const isClearing = isClearingAttivita || isClearingTransiti;
   const mergeCount = mergeLogEntries?.length ?? 0;
+
+  // Corse in linea presenti nella soluzione corrente (per scope ottimizzazione)
+  const nastriCorseIds = useMemo(() => {
+    return (attivitaList ?? [])
+      .filter((a) => a.tipoAttivita.toLowerCase() === "corsa in linea" && !a.isBridgeCorsa && a.idCorsa)
+      .map((a) => a.idCorsa as string);
+  }, [attivitaList]);
 
   const corseNonAssegnate = useMemo(() => {
     if (!transitiList || transitiList.length === 0) return [];
@@ -463,6 +473,30 @@ export default function Dashboard() {
       resetToSnapshot();
     }
   };
+
+  const handleDownloadSoluzione = useCallback(() => {
+    if (!attivitaList || attivitaList.length === 0) return;
+    const fmt = (iso: string) => {
+      try {
+        const d = new Date(iso);
+        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      } catch { return iso; }
+    };
+    const rows = attivitaList.map(a => ({
+      id_nastro: a.nastroId,
+      id_punto_origine: a.idOrigine,
+      id_punto_destinazione: a.idDestinazione,
+      orario_inizio_attivita: fmt(a.orarioInizio),
+      orario_fine_attivita: fmt(a.orarioFine),
+      tipo_attivita: a.tipoAttivita,
+      id_corsa: a.idCorsa ?? "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Soluzione");
+    const today = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `soluzione_nastri_${today}.xlsx`);
+  }, [attivitaList]);
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 lg:p-8 flex flex-col">
@@ -583,6 +617,17 @@ export default function Dashboard() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={handleDownloadSoluzione}
+                  className="gap-2 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950"
+                  data-testid="button-download-soluzione"
+                  title="Scarica la soluzione corrente come file Excel"
+                >
+                  <Download className="w-4 h-4" />
+                  Scarica soluzione
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleSvuota}
                   disabled={isClearing}
                   className="text-destructive hover:bg-destructive/10 hover:text-destructive hover-elevate border-destructive/20"
@@ -595,6 +640,18 @@ export default function Dashboard() {
             )}
             <ExcelUploader />
             <TransitiUploader />
+            {transitiList && transitiList.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="button-visualizza-transiti"
+                onClick={() => setShowTransitiViewer(true)}
+                className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950"
+              >
+                <Table2 className="w-4 h-4" />
+                Visualizza transiti
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -709,6 +766,14 @@ export default function Dashboard() {
         open={showOttimizzazioneMotore}
         onOpenChange={setShowOttimizzazioneMotore}
         selectedDate={new Date().toISOString().split("T")[0]}
+        nastriCorseIds={nastriCorseIds}
+      />
+
+      {/* Transiti viewer dialog */}
+      <TransitiViewerDialog
+        open={showTransitiViewer}
+        onOpenChange={setShowTransitiViewer}
+        transitiList={transitiList || []}
       />
     </div>
   );

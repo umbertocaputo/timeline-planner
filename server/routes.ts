@@ -246,6 +246,7 @@ export async function registerRoutes(
     data: z.string(),
     deposito: z.string().default(""),
     localitaTermine: z.array(z.string()).default([]),
+    corseIdsScope: z.array(z.string()).nullable().default(null),
   });
 
   const corsaInputSchema = z.object({

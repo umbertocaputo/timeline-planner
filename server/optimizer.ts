@@ -4,9 +4,20 @@
  * Algoritmo: Vehicle Scheduling Problem (VSP) ottimale
  * Fase 1 – Bipartite matching massimale via Hopcroft-Karp
  *           → Minimum Path Cover nel DAG di compatibilità
- *           → Numero minimo di nastri senza vincolo di durata
+ *           → Considera sia connessioni dirette sia Vettura (passeggero)
  * Fase 2 – Split iterativo delle catene che superano la durata massima
- * Fase 3 – Aggiunta tempi accessori in testa e coda
+ * Fase 3 – Costruzione nastri con Vettura, soste, tempi accessori
+ *           → TA iniziale nella località di partenza consentita
+ *           → Vettura (passeggero) dove il driver deve cambiare posizione
+ *           → TA finale nella località di arrivo consentita
+ *
+ * Regole chiave:
+ * - Ogni corsa può essere usata UNA SOLA VOLTA come "corsa in linea"
+ * - Ogni corsa può essere usata INFINITE VOLTE come "vettura" (passeggero)
+ * - Se localitaTermine è non-vuoto, tutti i nastri devono partire E terminare
+ *   in una delle località consentite (raggiungibili via Vettura se necessario)
+ * - corseIdsScope: se impostato, solo queste corse sono candidati "in linea";
+ *   tutte le corse rimangono disponibili come Vettura
  */
 
 export interface CorsaInput {
@@ -25,7 +36,8 @@ export interface OttimizzazioneParams {
   durataMinimaSostaMinuti: number;            // es. 5 — gap minimo tra due corse
   data: string;                               // "YYYY-MM-DD" per i timestamp ISO
   deposito: string;                           // località base (es. "Napoli")
-  localitaTermine: string[];                  // località in cui un nastro può iniziare/terminare
+  localitaTermine: string[];                  // località in cui un nastro può partire/terminare
+  corseIdsScope: string[] | null;             // null = tutte; array = solo queste come "in linea"
 }
 
 export interface AttivitaGenerata {
@@ -42,7 +54,7 @@ export interface AttivitaGenerata {
 export interface NastroGenerato {
   nastroId: string;
   attivita: AttivitaGenerata[];
-  corse: string[];        // idCorsa list
+  corse: string[];        // idCorsa list (solo corse in linea)
   durataMinuti: number;   // durata totale (dalla prima attività all'ultima)
 }
 
@@ -82,17 +94,109 @@ function makeNastroId(index: number): string {
   return `N${padded}G0`;
 }
 
+/**
+ * Cerca una Vettura INTERMEDIA (tra due corse consecutive nello stesso nastro).
+ * La Vettura deve partire da fromLoc non prima di afterTime+minGap
+ * e deve arrivare a toLoc non oltre beforeTime-minGap.
+ * Sceglie la PIÙ TARDIVA (minimizza attesa prima della corsa successiva).
+ */
+function findVettura(
+  fromLoc: string,
+  toLoc: string,
+  afterTime: Date,
+  beforeTime: Date,
+  allCorse: CorsaInput[],
+  minGap: number
+): CorsaInput | undefined {
+  const candidates = allCorse.filter(c =>
+    c.idOrigine === fromLoc &&
+    c.idDestinazione === toLoc &&
+    toDate(c.orarioInizio) >= addMinutes(afterTime, minGap) &&
+    toDate(c.orarioFine) <= addMinutes(beforeTime, -minGap)
+  );
+  // Prende la più tardiva (arriva più vicino alla corsa successiva)
+  return candidates.reduce<CorsaInput | undefined>((best, c) =>
+    !best || toDate(c.orarioFine) > toDate(best.orarioFine) ? c : best, undefined
+  );
+}
+
+/**
+ * Cerca la Vettura di INIZIO nastro: da una località consentita all'origine della prima corsa.
+ * Sceglie la più TARDIVA (arriva il più vicino possibile alla prima corsa, minimizzando l'overhead).
+ * Verifica che il tempo extra non faccia sforare la durata massima.
+ */
+function findStartVettura(
+  localitaOk: Set<string>,
+  firstC: CorsaInput,
+  chainBaseDuration: number,
+  maxDurata: number,
+  allCorse: CorsaInput[],
+  minGap: number
+): CorsaInput | undefined {
+  if (localitaOk.size === 0 || localitaOk.has(firstC.idOrigine)) return undefined;
+
+  let best: CorsaInput | undefined;
+  for (const loc of localitaOk) {
+    if (loc === firstC.idOrigine) continue;
+    const candidates = allCorse.filter(c =>
+      c.idOrigine === loc &&
+      c.idDestinazione === firstC.idOrigine &&
+      toDate(c.orarioFine) <= addMinutes(toDate(firstC.orarioInizio), -minGap)
+    );
+    for (const c of candidates) {
+      if (!best || toDate(c.orarioFine) > toDate(best.orarioFine)) {
+        best = c;
+      }
+    }
+  }
+  if (!best) return undefined;
+
+  // Verifica che l'overhead (dalla partenza della Vettura all'inizio della prima corsa) non sfori la durata max
+  const overhead = diffMinutes(toDate(best.orarioInizio), toDate(firstC.orarioInizio));
+  return (overhead + chainBaseDuration <= maxDurata) ? best : undefined;
+}
+
+/**
+ * Cerca la Vettura di FINE nastro: dall'ultima corsa a una località consentita.
+ * Sceglie la più PRECOCE (parte il prima possibile dopo l'ultima corsa, minimizzando l'overhead).
+ * Verifica che il tempo extra non faccia sforare la durata massima.
+ */
+function findEndVettura(
+  localitaOk: Set<string>,
+  lastC: CorsaInput,
+  chainBaseDuration: number,
+  startOverhead: number,
+  maxDurata: number,
+  allCorse: CorsaInput[],
+  minGap: number
+): CorsaInput | undefined {
+  if (localitaOk.size === 0 || localitaOk.has(lastC.idDestinazione)) return undefined;
+
+  let best: CorsaInput | undefined;
+  for (const loc of localitaOk) {
+    if (loc === lastC.idDestinazione) continue;
+    const candidates = allCorse.filter(c =>
+      c.idOrigine === lastC.idDestinazione &&
+      c.idDestinazione === loc &&
+      toDate(c.orarioInizio) >= addMinutes(toDate(lastC.orarioFine), minGap)
+    );
+    for (const c of candidates) {
+      if (!best || toDate(c.orarioInizio) < toDate(best.orarioInizio)) {
+        best = c;
+      }
+    }
+  }
+  if (!best) return undefined;
+
+  // Verifica che l'overhead totale (start + end) non sfori la durata max
+  const endOverhead = diffMinutes(toDate(lastC.orarioFine), toDate(best.orarioFine));
+  return (startOverhead + endOverhead + chainBaseDuration <= maxDurata) ? best : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Fase 1 – Hopcroft-Karp maximum bipartite matching
 // ---------------------------------------------------------------------------
 
-/**
- * Restituisce il matching massimale su un grafo bipartito.
- * left[i] = nodo sorgente (corsa come "fine"), right[j] = nodo dest (corsa come "inizio")
- * adj[i] = lista di j raggiungibili da left[i]
- * Ritorna: matchL[i] = j se left[i] è abbinato a right[j], -1 altrimenti
- *          matchR[j] = i se right[j] è abbinato a left[i], -1 altrimenti
- */
 function hopcroftKarp(n: number, adj: number[][]): { matchL: number[]; matchR: number[] } {
   const INF = Infinity;
   const matchL = new Array<number>(n).fill(-1);
@@ -148,19 +252,13 @@ function hopcroftKarp(n: number, adj: number[][]): { matchL: number[]; matchR: n
   return { matchL, matchR };
 }
 
-/**
- * Ricostruisce le catene (nastri) dal matching bipartito.
- * matchL[i] = j significa che la corsa i precede la corsa j
- */
 function reconstructChains(n: number, matchL: number[]): number[][] {
-  // Trova le corse "testa" di catena (non puntate da nessuno)
   const pointed = new Set<number>(matchL.filter(v => v !== -1));
   const chains: number[][] = [];
   const visited = new Set<number>();
 
   for (let i = 0; i < n; i++) {
     if (!pointed.has(i) && !visited.has(i)) {
-      // i è la testa di una catena
       const chain: number[] = [];
       let cur: number = i;
       while (cur !== -1 && !visited.has(cur)) {
@@ -181,6 +279,8 @@ function reconstructChains(n: number, matchL: number[]): number[][] {
 
 /**
  * Calcola la durata di una catena (in minuti), inclusi tempi accessori.
+ * Nota: questa stima non include l'eventuale Vettura di inizio/fine,
+ * ma è sufficiente per il controllo del vincolo di durata massima.
  */
 function calcolaDurataChain(
   chain: number[],
@@ -199,10 +299,6 @@ function calcolaDurataChain(
   );
 }
 
-/**
- * Divide una catena al punto in cui la durata supera il massimo.
- * Ritorna due sotto-catene.
- */
 function splitChain(
   chain: number[],
   corse: CorsaInput[],
@@ -217,8 +313,8 @@ function splitChain(
 
   const minMinuti = params.durataMinimaNoastroMinuti ?? 0;
 
-  let bestSplit = 1;    // fallback = original behaviour (last valid k for max constraint)
-  let idealSplit = -1;  // k where BOTH parts satisfy minMinuti
+  let bestSplit = 1;
+  let idealSplit = -1;
 
   for (let k = 1; k < chain.length; k++) {
     const ultimaFirst = corse[chain[k - 1]];
@@ -228,32 +324,27 @@ function splitChain(
       taFine;
     if (durataFirst > maxMinuti) break;
 
-    bestSplit = k; // original behaviour: keep last valid k
+    bestSplit = k;
 
     if (minMinuti > 0 && durataFirst >= minMinuti) {
       const secondPart = chain.slice(k);
       const durataSecond = calcolaDurataChain(secondPart, corse, params);
       if (durataSecond >= minMinuti) {
-        idealSplit = k; // both parts ≥ minMinuti
+        idealSplit = k;
       }
     }
   }
 
-  // Prefer a split where both parts meet minimum duration; fall back to original if none found
   const splitAt = idealSplit !== -1 ? idealSplit : bestSplit;
   return [chain.slice(0, splitAt), chain.slice(splitAt)];
 }
 
-/**
- * Applica split iterativi finché tutte le catene rispettano la durata massima.
- */
 function splitPerDurata(
   chains: number[][],
   corse: CorsaInput[],
   params: OttimizzazioneParams
-): { valid: number[][]; singletons: number[][] } {
+): number[][] {
   const result: number[][] = [];
-  const singletons: number[][] = [];
   const queue = [...chains];
 
   while (queue.length > 0) {
@@ -262,16 +353,9 @@ function splitPerDurata(
 
     const durata = calcolaDurataChain(chain, corse, params);
     if (durata <= params.durataMassimaNastroMinuti || chain.length === 1) {
-      if (chain.length === 1) {
-        const d = calcolaDurataChain(chain, corse, params);
-        if (d > params.durataMassimaNastroMinuti) {
-          singletons.push(chain); // corsa singola che supera la durata (raro)
-        } else {
-          result.push(chain);
-        }
-      } else {
-        result.push(chain);
-      }
+      // I singleton che superano la durata entrano comunque come nastri:
+      // la corsa deve essere assegnata anche se troppo lunga da sola.
+      result.push(chain);
     } else {
       const [a, b] = splitChain(chain, corse, params);
       if (b.length > 0) {
@@ -283,93 +367,194 @@ function splitPerDurata(
     }
   }
 
-  return { valid: result, singletons };
+  return result;
 }
 
 // ---------------------------------------------------------------------------
-// Fase 3 – Generazione attività con tempi accessori e soste
+// Fase 3 – Costruzione nastri con Vettura e tempi accessori
 // ---------------------------------------------------------------------------
 
-function generateAttivitaPerChain(
+/**
+ * Costruisce le attività di un nastro a partire da una catena di indici.
+ *
+ * Gestisce:
+ * 1. TA iniziale nella località di partenza consentita (con eventuale Vettura)
+ * 2. Corse in linea + soste dirette
+ * 3. Vettura intermedia quando due corse consecutive sono in localities diverse
+ * 4. Eventuale Vettura finale + TA nella località di fine consentita
+ */
+function buildNastroFromChain(
   chain: number[],
-  corse: CorsaInput[],
+  corseLinea: CorsaInput[],
+  corseAll: CorsaInput[],
   params: OttimizzazioneParams,
-  nastroId: string,
-  data: string
-): AttivitaGenerata[] {
+  nastroId: string
+): { attivita: AttivitaGenerata[]; durataMinuti: number } {
+  const localitaOk = new Set<string>(params.localitaTermine ?? []);
+  if (params.deposito) localitaOk.add(params.deposito);
+
+  const firstC = corseLinea[chain[0]];
+  const lastC = corseLinea[chain[chain.length - 1]];
   const attivita: AttivitaGenerata[] = [];
-  const taInizioMin = params.durataTempoAccessorioInizioMinuti;
-  const taFineMin = params.durataTempoAccessorioFineMinuti;
 
-  if (chain.length === 0) return [];
+  // Durata base della catena (senza overhead Vettura inizio/fine): usata per il guard di durata
+  const chainBaseDuration =
+    params.durataTempoAccessorioInizioMinuti +
+    diffMinutes(toDate(firstC.orarioInizio), toDate(lastC.orarioFine)) +
+    params.durataTempoAccessorioFineMinuti;
 
-  const primaCorsa = corse[chain[0]];
-  const ultimaCorsa = corse[chain[chain.length - 1]];
+  // ── 1. TA iniziale + eventuale Vettura di posizionamento ─────────────────
+  // findStartVettura sceglie la Vettura più tardiva (minimo overhead) e verifica che
+  // il nastro risultante non superi la durata massima.
+  const startVettura = findStartVettura(
+    localitaOk, firstC, chainBaseDuration,
+    params.durataMassimaNastroMinuti, corseAll, params.durataMinimaSostaMinuti
+  );
 
-  // Tempo accessorio in testa
-  const taInizioFine = toDate(primaCorsa.orarioInizio);
-  const taInizioStart = addMinutes(taInizioFine, -taInizioMin);
-  attivita.push({
-    nastroId,
-    idOrigine: primaCorsa.idOrigine,
-    idDestinazione: primaCorsa.idOrigine,
-    orarioInizio: toISO(taInizioStart),
-    orarioFine: toISO(taInizioFine),
-    tipoAttivita: "tempo accessorio",
-    idCorsa: null,
-    isBridgeCorsa: false,
-  });
-
-  // Corse e soste
-  for (let k = 0; k < chain.length; k++) {
-    const corsa = corse[chain[k]];
+  if (startVettura) {
+    // TA prima della Vettura iniziale (alla località di partenza)
+    const taStart = addMinutes(toDate(startVettura.orarioInizio), -params.durataTempoAccessorioInizioMinuti);
     attivita.push({
-      nastroId,
-      idOrigine: corsa.idOrigine,
-      idDestinazione: corsa.idDestinazione,
-      orarioInizio: corsa.orarioInizio,
-      orarioFine: corsa.orarioFine,
-      tipoAttivita: "corsa in linea",
-      idCorsa: corsa.idCorsa,
-      isBridgeCorsa: false,
+      nastroId, idOrigine: startVettura.idOrigine, idDestinazione: startVettura.idOrigine,
+      orarioInizio: toISO(taStart), orarioFine: startVettura.orarioInizio,
+      tipoAttivita: "tempo accessorio", idCorsa: null, isBridgeCorsa: false,
+    });
+    // Vettura iniziale (passeggero = spostamento)
+    attivita.push({
+      nastroId, idOrigine: startVettura.idOrigine, idDestinazione: startVettura.idDestinazione,
+      orarioInizio: startVettura.orarioInizio, orarioFine: startVettura.orarioFine,
+      tipoAttivita: "corsa di spostamento", idCorsa: startVettura.idCorsa, isBridgeCorsa: false,
+    });
+    // Sosta tra Vettura e prima corsa (se c'è gap)
+    const gap = diffMinutes(toDate(startVettura.orarioFine), toDate(firstC.orarioInizio));
+    if (gap > 0) {
+      attivita.push({
+        nastroId, idOrigine: startVettura.idDestinazione, idDestinazione: startVettura.idDestinazione,
+        orarioInizio: startVettura.orarioFine, orarioFine: firstC.orarioInizio,
+        tipoAttivita: "sosta", idCorsa: null, isBridgeCorsa: false,
+      });
+    }
+  } else {
+    // TA direttamente prima della prima corsa
+    const taStart = addMinutes(toDate(firstC.orarioInizio), -params.durataTempoAccessorioInizioMinuti);
+    attivita.push({
+      nastroId, idOrigine: firstC.idOrigine, idDestinazione: firstC.idOrigine,
+      orarioInizio: toISO(taStart), orarioFine: firstC.orarioInizio,
+      tipoAttivita: "tempo accessorio", idCorsa: null, isBridgeCorsa: false,
+    });
+  }
+
+  // ── 2. Corse in linea + soste + vetture intermedie ───────────────────────
+  for (let k = 0; k < chain.length; k++) {
+    const c = corseLinea[chain[k]];
+    attivita.push({
+      nastroId, idOrigine: c.idOrigine, idDestinazione: c.idDestinazione,
+      orarioInizio: c.orarioInizio, orarioFine: c.orarioFine,
+      tipoAttivita: "corsa in linea", idCorsa: c.idCorsa, isBridgeCorsa: false,
     });
 
-    // Sosta tra corsa k e k+1 (se c'è gap)
     if (k < chain.length - 1) {
-      const prossima = corse[chain[k + 1]];
-      const sostaInizio = toDate(corsa.orarioFine);
-      const sostaFine = toDate(prossima.orarioInizio);
-      const gapMin = diffMinutes(sostaInizio, sostaFine);
-      if (gapMin > 0) {
-        attivita.push({
-          nastroId,
-          idOrigine: corsa.idDestinazione,
-          idDestinazione: prossima.idOrigine,
-          orarioInizio: toISO(sostaInizio),
-          orarioFine: toISO(sostaFine),
-          tipoAttivita: "sosta",
-          idCorsa: null,
-          isBridgeCorsa: false,
-        });
+      const next = corseLinea[chain[k + 1]];
+
+      if (c.idDestinazione === next.idOrigine) {
+        // Connessione diretta: sosta se c'è gap
+        const gap = diffMinutes(toDate(c.orarioFine), toDate(next.orarioInizio));
+        if (gap > 0) {
+          attivita.push({
+            nastroId, idOrigine: c.idDestinazione, idDestinazione: next.idOrigine,
+            orarioInizio: c.orarioFine, orarioFine: next.orarioInizio,
+            tipoAttivita: "sosta", idCorsa: null, isBridgeCorsa: false,
+          });
+        }
+      } else {
+        // Serve Vettura intermedia (passeggero da c.dest a next.origin)
+        const v = findVettura(
+          c.idDestinazione, next.idOrigine,
+          toDate(c.orarioFine), toDate(next.orarioInizio),
+          corseAll, params.durataMinimaSostaMinuti
+        );
+        if (v) {
+          const gapBefore = diffMinutes(toDate(c.orarioFine), toDate(v.orarioInizio));
+          if (gapBefore > 0) {
+            attivita.push({
+              nastroId, idOrigine: c.idDestinazione, idDestinazione: c.idDestinazione,
+              orarioInizio: c.orarioFine, orarioFine: v.orarioInizio,
+              tipoAttivita: "sosta", idCorsa: null, isBridgeCorsa: false,
+            });
+          }
+          attivita.push({
+            nastroId, idOrigine: v.idOrigine, idDestinazione: v.idDestinazione,
+            orarioInizio: v.orarioInizio, orarioFine: v.orarioFine,
+            tipoAttivita: "corsa di spostamento", idCorsa: v.idCorsa, isBridgeCorsa: false,
+          });
+          const gapAfter = diffMinutes(toDate(v.orarioFine), toDate(next.orarioInizio));
+          if (gapAfter > 0) {
+            attivita.push({
+              nastroId, idOrigine: v.idDestinazione, idDestinazione: next.idOrigine,
+              orarioInizio: v.orarioFine, orarioFine: next.orarioInizio,
+              tipoAttivita: "sosta", idCorsa: null, isBridgeCorsa: false,
+            });
+          }
+        } else {
+          // Nessuna Vettura trovata: sosta generica (gap già nel timespan)
+          const gap = diffMinutes(toDate(c.orarioFine), toDate(next.orarioInizio));
+          if (gap > 0) {
+            attivita.push({
+              nastroId, idOrigine: c.idDestinazione, idDestinazione: next.idOrigine,
+              orarioInizio: c.orarioFine, orarioFine: next.orarioInizio,
+              tipoAttivita: "sosta", idCorsa: null, isBridgeCorsa: false,
+            });
+          }
+        }
       }
     }
   }
 
-  // Tempo accessorio in coda
-  const taFineInizio = toDate(ultimaCorsa.orarioFine);
-  const taFineFine = addMinutes(taFineInizio, taFineMin);
-  attivita.push({
-    nastroId,
-    idOrigine: ultimaCorsa.idDestinazione,
-    idDestinazione: ultimaCorsa.idDestinazione,
-    orarioInizio: toISO(taFineInizio),
-    orarioFine: toISO(taFineFine),
-    tipoAttivita: "tempo accessorio",
-    idCorsa: null,
-    isBridgeCorsa: false,
-  });
+  // ── 3. Eventuale Vettura finale + TA nella località consentita ───────────
+  // findEndVettura sceglie la Vettura più precoce (minimo overhead) e verifica che
+  // il nastro risultante non superi la durata massima, considerando anche l'overhead iniziale.
+  const startOverhead = startVettura
+    ? diffMinutes(toDate(startVettura.orarioInizio), toDate(firstC.orarioInizio))
+    : 0;
+  const endVettura = findEndVettura(
+    localitaOk, lastC, chainBaseDuration, startOverhead,
+    params.durataMassimaNastroMinuti, corseAll, params.durataMinimaSostaMinuti
+  );
 
-  return attivita;
+  if (endVettura) {
+    const gap = diffMinutes(toDate(lastC.orarioFine), toDate(endVettura.orarioInizio));
+    if (gap > 0) {
+      attivita.push({
+        nastroId, idOrigine: lastC.idDestinazione, idDestinazione: lastC.idDestinazione,
+        orarioInizio: lastC.orarioFine, orarioFine: endVettura.orarioInizio,
+        tipoAttivita: "sosta", idCorsa: null, isBridgeCorsa: false,
+      });
+    }
+    attivita.push({
+      nastroId, idOrigine: endVettura.idOrigine, idDestinazione: endVettura.idDestinazione,
+      orarioInizio: endVettura.orarioInizio, orarioFine: endVettura.orarioFine,
+      tipoAttivita: "corsa di spostamento", idCorsa: endVettura.idCorsa, isBridgeCorsa: false,
+    });
+    const taFine = addMinutes(toDate(endVettura.orarioFine), params.durataTempoAccessorioFineMinuti);
+    attivita.push({
+      nastroId, idOrigine: endVettura.idDestinazione, idDestinazione: endVettura.idDestinazione,
+      orarioInizio: endVettura.orarioFine, orarioFine: toISO(taFine),
+      tipoAttivita: "tempo accessorio", idCorsa: null, isBridgeCorsa: false,
+    });
+  } else {
+    const taFine = addMinutes(toDate(lastC.orarioFine), params.durataTempoAccessorioFineMinuti);
+    attivita.push({
+      nastroId, idOrigine: lastC.idDestinazione, idDestinazione: lastC.idDestinazione,
+      orarioInizio: lastC.orarioFine, orarioFine: toISO(taFine),
+      tipoAttivita: "tempo accessorio", idCorsa: null, isBridgeCorsa: false,
+    });
+  }
+
+  const durataMinuti = Math.round(
+    diffMinutes(toDate(attivita[0].orarioInizio), toDate(attivita[attivita.length - 1].orarioFine))
+  );
+
+  return { attivita, durataMinuti };
 }
 
 // ---------------------------------------------------------------------------
@@ -382,94 +567,109 @@ export function ottimizza(
 ): OttimizzazioneResult {
   if (corseInput.length === 0) {
     return {
-      nastri: [],
-      corseAssegnate: 0,
-      corseNonAssegnate: [],
-      nastriGenerati: 0,
-      durataMediaMinuti: 0,
-      durataMinimaMinuti: 0,
-      durataMassimaMinuti: 0,
+      nastri: [], corseAssegnate: 0, corseNonAssegnate: [],
+      nastriGenerati: 0, durataMediaMinuti: 0, durataMinimaMinuti: 0, durataMassimaMinuti: 0,
     };
   }
 
-  // Ordina per orario di inizio
-  const corse = [...corseInput].sort(
+  // corseAll: tutte le corse (disponibili sia come "in linea" sia come Vettura)
+  const corseAll = [...corseInput].sort(
     (a, b) => new Date(a.orarioInizio).getTime() - new Date(b.orarioInizio).getTime()
   );
-  const n = corse.length;
 
-  // Costruisce il grafo di compatibilità (senza vincolo durata, gestito in Fase 2)
+  // corseLinea: le corse candidate a "corsa in linea" (possibilmente filtrate per scope)
+  const corseLinea = params.corseIdsScope
+    ? corseAll.filter(c => params.corseIdsScope!.includes(c.idCorsa))
+    : corseAll;
+
+  const n = corseLinea.length;
+  if (n === 0) {
+    return {
+      nastri: [], corseAssegnate: 0, corseNonAssegnate: corseAll.map(c => c.idCorsa),
+      nastriGenerati: 0, durataMediaMinuti: 0, durataMinimaMinuti: 0, durataMassimaMinuti: 0,
+    };
+  }
+
+  // ── Fase 1: grafo di compatibilità con Vettura ────────────────────────────
+  // Un arco i→j esiste se j può seguire i nella stessa catena, direttamente
+  // o attraverso uno spostamento (il driver viaggia come passeggero su corseAll).
+  //
+  // Regole gap:
+  //  - Connessione DIRETTA (stessa fermata): gap ≥ 0 (j inizia dopo la fine di i)
+  //  - Connessione via SPOSTAMENTO: gap ≥ durataMinimaSostaMinuti su OGNI lato dello spostamento
+  //
+  // Pruning di durata: se TA_inizio+(j.fine–i.inizio)+TA_fine > maxDurata, i e j
+  // non potranno MAI coesistere nello stesso nastro → arco escluso.
+  const taTotal = params.durataTempoAccessorioInizioMinuti + params.durataTempoAccessorioFineMinuti;
   const adj: number[][] = Array.from({ length: n }, () => []);
+
   for (let i = 0; i < n; i++) {
-    const fine = toDate(corse[i].orarioFine);
+    const ci = corseLinea[i];
+    const fineI = toDate(ci.orarioFine);
+
     for (let j = 0; j < n; j++) {
       if (i === j) continue;
-      const inizio = toDate(corse[j].orarioInizio);
-      const compatibileLocalita = corse[i].idDestinazione === corse[j].idOrigine;
-      const compatibileTempo = diffMinutes(fine, inizio) >= params.durataMinimaSostaMinuti;
-      if (compatibileLocalita && compatibileTempo) {
+      const cj = corseLinea[j];
+      const inizioJ = toDate(cj.orarioInizio);
+
+      // j deve iniziare alla fine di i o dopo (gap ≥ 0)
+      if (inizioJ < fineI) continue;
+
+      // Pruning di durata: se anche solo i e j insieme (senza altri) sforerebbero maxDurata, skip
+      const spanIJ = diffMinutes(toDate(ci.orarioInizio), toDate(cj.orarioFine));
+      if (spanIJ + taTotal > params.durataMassimaNastroMinuti) continue;
+
+      if (ci.idDestinazione === cj.idOrigine) {
+        // Connessione DIRETTA: nessun gap minimo richiesto (driver è già in loco)
         adj[i].push(j);
+      } else {
+        // Connessione via SPOSTAMENTO: serve gap minimo su entrambi i lati
+        if (diffMinutes(fineI, inizioJ) < params.durataMinimaSostaMinuti) continue;
+        const v = findVettura(
+          ci.idDestinazione,
+          cj.idOrigine,
+          fineI,
+          inizioJ,
+          corseAll,
+          params.durataMinimaSostaMinuti
+        );
+        if (v) adj[i].push(j);
       }
     }
   }
 
-  // Fase 1: Hopcroft-Karp
+  // Hopcroft-Karp → matching massimale → numero minimo di catene
   const { matchL } = hopcroftKarp(n, adj);
-
-  // Ricostruisce catene
   const chains = reconstructChains(n, matchL);
 
-  // Fase 2: Split per durata massima
-  const { valid: validChains } = splitPerDurata(chains, corse, params);
+  // ── Fase 2: split per durata massima ─────────────────────────────────────
+  const validChains = splitPerDurata(chains, corseLinea, params);
 
-  // Genera nastri
+  // ── Fase 3: costruzione nastri ────────────────────────────────────────────
   const nastri: NastroGenerato[] = [];
   const corseAssegnate = new Set<string>();
 
   validChains.forEach((chain, idx) => {
     const nastroId = makeNastroId(idx + 1);
-    const attivita = generateAttivitaPerChain(chain, corse, params, nastroId, params.data);
-
-    const prima = corse[chain[0]];
-    const ultima = corse[chain[chain.length - 1]];
-    const durataMinuti = calcolaDurataChain(chain, corse, params);
-
-    const corseDiQuestoNastro = chain.map(i => corse[i].idCorsa);
+    const { attivita, durataMinuti } = buildNastroFromChain(chain, corseLinea, corseAll, params, nastroId);
+    const corseDiQuestoNastro = chain.map(i => corseLinea[i].idCorsa);
     corseDiQuestoNastro.forEach(c => corseAssegnate.add(c));
-
-    nastri.push({
-      nastroId,
-      attivita,
-      corse: corseDiQuestoNastro,
-      durataMinuti,
-    });
+    nastri.push({ nastroId, attivita, corse: corseDiQuestoNastro, durataMinuti });
   });
 
-  const corseNonAssegnate = corse
+  const corseNonAssegnate = corseLinea
     .filter(c => !corseAssegnate.has(c.idCorsa))
     .map(c => c.idCorsa);
 
-  // ---------------------------------------------------------------------------
-  // Fase 4 – Deposito, località di termine e nastri di ritorno
-  // ---------------------------------------------------------------------------
-
-  // Costruisce l'insieme delle località in cui un nastro può terminare.
-  // Il deposito è sempre incluso; se localitaTermine è vuoto, nessun vincolo di fine-nastro.
+  // ── Fase 4: ordinamento finale ────────────────────────────────────────────
   const localitaOk = new Set<string>(params.localitaTermine ?? []);
   if (params.deposito) localitaOk.add(params.deposito);
 
-  // Helper: ultima "corsa in linea" di un nastro (esclude TA, soste e spostamenti)
-  const ultimaCorsa4 = (n: NastroGenerato): AttivitaGenerata | undefined =>
-    [...n.attivita].reverse().find(a => a.tipoAttivita === "corsa in linea");
-
-  // Helper: posizione finale effettiva del nastro
-  // = idDestinazione dell'ultimo TA (che ha sempre idOrigine === idDestinazione === posizione corrente)
   const endLocationOf = (n: NastroGenerato): string | undefined =>
     [...n.attivita].reverse()
       .find(a => a.tipoAttivita === "tempo accessorio")
       ?.idDestinazione;
 
-  // Helper: rinumera tutti i nastri in array
   const rinumera = (arr: NastroGenerato[]) => {
     arr.forEach((n, i) => {
       const newId = makeNastroId(i + 1);
@@ -478,97 +678,6 @@ export function ottimizza(
     });
   };
 
-  // ── Step 1: vincolo località di termine ──────────────────────────────────
-  // Se localitaOk ha elementi, ogni nastro deve terminare in una di quelle.
-  // Se l'ultima corsa finisce altrove, aggiungiamo una corsa di spostamento.
-  // Le corse già usate come spostamento vengono tracciate per evitare duplicati.
-  const corseUsateSpostamento = new Set<string>();
-
-  if (localitaOk.size > 0) {
-    for (const nastro of nastri) {
-      const ultima = ultimaCorsa4(nastro);
-      if (!ultima) continue;
-      if (localitaOk.has(ultima.idDestinazione)) continue; // OK, già in posto
-
-      const posAttuale = ultima.idDestinazione;
-
-      // L'ultima attività del nastro è il TA finale — lo rimuoviamo temporaneamente
-      const taFinale = nastro.attivita.pop()!;
-      const taFineTime = toDate(taFinale.orarioInizio); // inizio del TA = fine ultima corsa
-
-      // Cerca una corsa di spostamento: da posAttuale a una localitaOk
-      // — preferisce il deposito; fallback: qualsiasi localitaOk
-      // — esclude corse già assegnate come spostamento ad altri nastri
-      const trovaSpost = (soloDeposito: boolean): CorsaInput | undefined =>
-        corse.find(c =>
-          c.idOrigine === posAttuale &&
-          localitaOk.has(c.idDestinazione) &&
-          (!soloDeposito || c.idDestinazione === params.deposito) &&
-          toDate(c.orarioInizio) >= taFineTime &&
-          !corseUsateSpostamento.has(c.idCorsa)
-        );
-
-      const spostCorsa = trovaSpost(true) ?? trovaSpost(false);
-
-      if (spostCorsa) {
-        const rcStart = toDate(spostCorsa.orarioInizio);
-        const rcEnd   = toDate(spostCorsa.orarioFine);
-
-        // Sosta di attesa (se la corsa parte dopo il TA)
-        if (diffMinutes(taFineTime, rcStart) > 0) {
-          nastro.attivita.push({
-            nastroId: nastro.nastroId,
-            idOrigine: posAttuale, idDestinazione: posAttuale,
-            orarioInizio: toISO(taFineTime), orarioFine: toISO(rcStart),
-            tipoAttivita: "sosta", idCorsa: null, isBridgeCorsa: false,
-          });
-        }
-        // Corsa di spostamento (marcata come usata per evitare duplicati)
-        corseUsateSpostamento.add(spostCorsa.idCorsa);
-        nastro.attivita.push({
-          nastroId: nastro.nastroId,
-          idOrigine: spostCorsa.idOrigine, idDestinazione: spostCorsa.idDestinazione,
-          orarioInizio: spostCorsa.orarioInizio, orarioFine: spostCorsa.orarioFine,
-          tipoAttivita: "corsa in linea", idCorsa: spostCorsa.idCorsa, isBridgeCorsa: true,
-        });
-        // Nuovo TA finale nella località consentita
-        const nuovoTaFine = addMinutes(rcEnd, params.durataTempoAccessorioFineMinuti);
-        nastro.attivita.push({
-          nastroId: nastro.nastroId,
-          idOrigine: spostCorsa.idDestinazione, idDestinazione: spostCorsa.idDestinazione,
-          orarioInizio: toISO(rcEnd), orarioFine: toISO(nuovoTaFine),
-          tipoAttivita: "tempo accessorio", idCorsa: null, isBridgeCorsa: false,
-        });
-        nastro.durataMinuti = Math.round(
-          diffMinutes(toDate(nastro.attivita[0].orarioInizio), nuovoTaFine)
-        );
-      } else {
-        // Nessuna corsa reale trovata → spostamento generico (placeholder)
-        const dest = params.deposito || Array.from(localitaOk)[0] || posAttuale;
-        const spostFine = addMinutes(taFineTime, 60);
-        nastro.attivita.push({
-          nastroId: nastro.nastroId,
-          idOrigine: posAttuale, idDestinazione: dest,
-          orarioInizio: toISO(taFineTime), orarioFine: toISO(spostFine),
-          tipoAttivita: "spostamento", idCorsa: null, isBridgeCorsa: true,
-        });
-        const nuovoTaFine = addMinutes(spostFine, params.durataTempoAccessorioFineMinuti);
-        nastro.attivita.push({
-          nastroId: nastro.nastroId,
-          idOrigine: dest, idDestinazione: dest,
-          orarioInizio: toISO(spostFine), orarioFine: toISO(nuovoTaFine),
-          tipoAttivita: "tempo accessorio", idCorsa: null, isBridgeCorsa: false,
-        });
-        nastro.durataMinuti = Math.round(
-          diffMinutes(toDate(nastro.attivita[0].orarioInizio), nuovoTaFine)
-        );
-      }
-    }
-  }
-
-  // ── Step 2: ordinamento finale ───────────────────────────────────────────
-  // Se è configurato un deposito, i nastri che terminano fuori deposito vengono
-  // spostati in fondo (turni serali); gli altri sono ordinati per orario di inizio.
   if (params.deposito) {
     nastri.sort((a, b) => {
       const aFuori = endLocationOf(a) !== params.deposito ? 1 : 0;

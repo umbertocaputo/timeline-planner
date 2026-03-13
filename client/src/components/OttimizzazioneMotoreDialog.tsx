@@ -86,6 +86,7 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   selectedDate: string; // "YYYY-MM-DD"
+  nastriCorseIds?: string[]; // IDs delle corse già in soluzione (per scope "solo soluzione")
 }
 
 // ---------------------------------------------------------------------------
@@ -146,9 +147,12 @@ function estraiCorseDaTransiti(transiti: Transito[]): CorsaInput[] {
 // Componente principale
 // ---------------------------------------------------------------------------
 
-export function OttimizzazioneMotoreDialog({ open, onOpenChange, selectedDate }: Props) {
+export function OttimizzazioneMotoreDialog({ open, onOpenChange, selectedDate, nastriCorseIds }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Scope: "tutte" = tutte le corse dai transiti; "soluzione" = solo quelle nella soluzione corrente
+  const [scope, setScope] = useState<"tutte" | "soluzione">("tutte");
 
   // Parametri configurabili
   const [params, setParams] = useState<Params>({
@@ -211,6 +215,11 @@ export function OttimizzazioneMotoreDialog({ open, onOpenChange, selectedDate }:
     return data as T;
   }
 
+  // Scope effettivo da passare all'API
+  const corseIdsScope = scope === "soluzione"
+    ? (nastriCorseIds && nastriCorseIds.length > 0 ? nastriCorseIds : null)
+    : null;
+
   // Anteprima
   const anteprimaMutation = useMutation({
     mutationFn: async () => {
@@ -221,7 +230,7 @@ export function OttimizzazioneMotoreDialog({ open, onOpenChange, selectedDate }:
       setCorse(corseToUse);
       return postJson<OttimizzazioneResult>("/api/ottimizzazione/anteprima", {
         corse: corseToUse,
-        params,
+        params: { ...params, corseIdsScope },
       });
     },
     onSuccess: (data) => {
@@ -240,7 +249,7 @@ export function OttimizzazioneMotoreDialog({ open, onOpenChange, selectedDate }:
   const applicaMutation = useMutation({
     mutationFn: async () => postJson("/api/ottimizzazione/applica", {
       corse,
-      params,
+      params: { ...params, corseIdsScope },
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/attivita"] });
@@ -496,8 +505,52 @@ export function OttimizzazioneMotoreDialog({ open, onOpenChange, selectedDate }:
                 <p className="text-xs text-muted-foreground">
                   {params.localitaTermine.length === 0 && !params.deposito
                     ? "Nessun vincolo di termine attivo."
-                    : `${params.localitaTermine.length + (params.deposito ? 1 : 0)} ${params.deposito ? `(deposito ${params.deposito} incluso)` : ""} — le corse di spostamento vengono aggiunte automaticamente dove necessario.`}
+                    : `${params.localitaTermine.length + (params.deposito ? 1 : 0)} località ${params.deposito ? `(deposito ${params.deposito} incluso)` : ""} — i nastri partono e terminano solo in queste, usando Vettura se necessario.`}
                 </p>
+              </div>
+            </div>
+
+            {/* Scope ottimizzazione */}
+            <div className="space-y-2">
+              <h3 className="font-medium text-sm">Ambito ottimizzazione</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  data-testid="button-scope-tutte"
+                  onClick={() => setScope("tutte")}
+                  className={`flex items-start gap-2 rounded-md border p-3 text-left transition-colors ${
+                    scope === "tutte"
+                      ? "border-violet-500 bg-violet-50 dark:bg-violet-950/30"
+                      : "border-border hover:bg-muted/50"
+                  }`}
+                >
+                  <div className={`mt-0.5 h-3.5 w-3.5 rounded-full border-2 shrink-0 ${scope === "tutte" ? "border-violet-500 bg-violet-500" : "border-muted-foreground"}`} />
+                  <div>
+                    <p className="text-xs font-medium">Tutte le corse dai transiti</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{corseCount} corse disponibili</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  data-testid="button-scope-soluzione"
+                  onClick={() => setScope("soluzione")}
+                  disabled={!nastriCorseIds || nastriCorseIds.length === 0}
+                  className={`flex items-start gap-2 rounded-md border p-3 text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    scope === "soluzione"
+                      ? "border-violet-500 bg-violet-50 dark:bg-violet-950/30"
+                      : "border-border hover:bg-muted/50"
+                  }`}
+                >
+                  <div className={`mt-0.5 h-3.5 w-3.5 rounded-full border-2 shrink-0 ${scope === "soluzione" ? "border-violet-500 bg-violet-500" : "border-muted-foreground"}`} />
+                  <div>
+                    <p className="text-xs font-medium">Solo corse nella soluzione</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {nastriCorseIds && nastriCorseIds.length > 0
+                        ? `${nastriCorseIds.length} corse nei nastri correnti`
+                        : "Nessun nastro presente"}
+                    </p>
+                  </div>
+                </button>
               </div>
             </div>
 
